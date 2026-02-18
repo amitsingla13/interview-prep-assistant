@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview Preparation Assistant</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+        .header h1 { font-size: 22px; margin-bottom: 5px; }
+        .header p { font-size: 13px; opacity: 0.85; }
+        .mode-buttons {
+            display: flex;
+            gap: 10px;
+            padding: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .mode-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: white;
+        }
+        .mode-btn.interview { background: #007bff; }
+        .mode-btn.interview:hover { background: #0056b3; }
+        .mode-btn.language { background: #28a745; }
+        .mode-btn.language:hover { background: #1e7e34; }
+        .mode-btn.general { background: #6f42c1; }
+        .mode-btn.general:hover { background: #5a32a3; }
+        .mode-btn.reset { background: #dc3545; font-size: 12px; padding: 8px 15px; }
+        .mode-btn.reset:hover { background: #c82333; }
+
+        #language-picker {
+            display: none;
+            padding: 0 20px 15px;
+            text-align: center;
+        }
+        #language-picker select {
+            padding: 10px 15px;
+            border-radius: 10px;
+            border: 2px solid #28a745;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        #language-picker button {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .chat-area {
+            height: 350px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .message.bot { justify-content: flex-start; }
+        .message.user { justify-content: flex-end; }
+        .message .avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; color: white; flex-shrink: 0;
+        }
+        .message.bot .avatar { background: #667eea; }
+        .message.user .avatar { background: #28a745; }
+        .bubble {
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .message.bot .bubble {
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .message.user .bubble {
+            background: #007bff;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        .message .audio-player {
+            margin-top: 8px;
+        }
+        .message .audio-player audio {
+            height: 32px;
+            width: 100%;
+        }
+
+        .input-area {
+            display: flex;
+            padding: 15px;
+            gap: 10px;
+            border-top: 1px solid #eee;
+            background: white;
+            align-items: center;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .input-area input:focus { border-color: #667eea; }
+        .send-btn {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: #007bff;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .send-btn:hover { background: #0056b3; }
+        .mic-btn {
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: #dc3545;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .mic-btn.recording {
+            background: #28a745;
+            animation: pulse 1s infinite;
+            box-shadow: 0 0 20px rgba(40,167,69,0.5);
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+        .status-bar {
+            text-align: center;
+            padding: 8px;
+            font-size: 12px;
+            color: #666;
+            background: #f0f0f0;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 10px 20px;
+            color: #999;
+            font-size: 13px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-headset"></i> Interview Prep Assistant</h1>
+            <p>Practice interviews & language speaking with AI</p>
+        </div>
+
+        <div class="mode-buttons">
+            <button class="mode-btn interview" onclick="startInterview()">
+                <i class="fas fa-briefcase"></i> IT Interview
+            </button>
+            <button class="mode-btn language" onclick="showLanguagePicker()">
+                <i class="fas fa-language"></i> Language Test
+            </button>
+            <button class="mode-btn general" onclick="startGeneral()">
+                <i class="fas fa-comments"></i> Free Chat
+            </button>
+            <button class="mode-btn reset" onclick="resetSession()">
+                <i class="fas fa-redo"></i> Reset
+            </button>
+        </div>
+
+        <div id="language-picker">
+            <select id="lang-select">
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="zh">Chinese</option>
+                <option value="hi">Hindi</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="pt">Portuguese</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+                <option value="it">Italian</option>
+                <option value="nl">Dutch</option>
+            </select>
+            <button onclick="startLanguageTest()">Start</button>
+        </div>
+
+        <div class="chat-area" id="chat-area"></div>
+        <div class="typing-indicator" id="typing">
+            <i class="fas fa-circle-notch fa-spin"></i> Bot is thinking...
+        </div>
+        <div class="status-bar" id="status">Choose a mode to start</div>
+
+        <div class="input-area">
+            <input type="text" id="text-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendText()">
+            <button class="send-btn" onclick="sendText()" title="Send text">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+            <button class="mic-btn" id="mic-btn" onclick="toggleRecording()" title="Click to start listening – auto-detects when you stop talking">
+                <i class="fas fa-microphone"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        const chatArea = document.getElementById('chat-area');
+        const textInput = document.getElementById('text-input');
+        const micBtn = document.getElementById('mic-btn');
+        const typingEl = document.getElementById('typing');
+        const statusEl = document.getElementById('status');
+
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let currentAudio = null;  // Track currently playing audio
+        let botIsPlaying = false; // True while bot audio is playing
+
+        // --- VAD (Voice Activity Detection) ---
+        let audioContext = null;
+        let analyser = null;
+        let micStream = null;
+        let vadInterval = null;
+        let silenceStart = null;
+        let speechDetected = false;
+        let autoListenEnabled = false;  // true after first mic click
+        let wasInterrupted = false; // Track if user interrupted bot
+        const SILENCE_THRESHOLD = 20;   // RMS volume below this = silence (0-128 range)
+        const SILENCE_DURATION = 1200;  // ms of silence before auto-stop (fast response)
+        const VAD_CHECK_INTERVAL = 80;  // ms between VAD checks (faster polling)
+        const INTERRUPT_SPEECH_MIN_MS = 300; // must speak at least this long during bot playback to count as interruption
+        let speechStartTime = null;     // when current speech burst started
+        let interruptionDetectedAt = null; // timestamp when interruption was detected
+
+        function getRMS(analyserNode) {
+            const data = new Uint8Array(analyserNode.fftSize);
+            analyserNode.getByteTimeDomainData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                const val = (data[i] - 128);
+                sum += val * val;
+            }
+            return Math.sqrt(sum / data.length);
+        }
+
+        function startVAD() {
+            if (!analyser) return;
+            silenceStart = null;
+            speechDetected = false;
+            speechStartTime = null;
+            interruptionDetectedAt = null;
+            vadInterval = setInterval(() => {
+                const rms = getRMS(analyser);
+                if (rms > SILENCE_THRESHOLD) {
+                    // Voice detected
+                    if (!speechDetected) {
+                        speechStartTime = Date.now();
+                    }
+                    speechDetected = true;
+                    silenceStart = null;
+
+                    // If bot is playing audio, only interrupt after sustained speech
+                    if (botIsPlaying && speechStartTime && (Date.now() - speechStartTime > INTERRUPT_SPEECH_MIN_MS)) {
+                        stopCurrentAudio();
+                        wasInterrupted = true;
+                        interruptionDetectedAt = Date.now();
+                        // Discard all audio chunks recorded while bot was playing (contains bot's voice)
+                        audioChunks = [];
+                        statusEl.textContent = '🎤 Go ahead, I\'m listening...';
+                    } else if (!botIsPlaying) {
+                        statusEl.textContent = '🎤 Listening...';
+                    }
+                } else if (speechDetected) {
+                    // Was speaking, now silent
+                    if (!silenceStart) {
+                        silenceStart = Date.now();
+                    } else if (Date.now() - silenceStart > SILENCE_DURATION) {
+                        // If we just interrupted, give extra time for user to continue speaking
+                        if (interruptionDetectedAt && (Date.now() - interruptionDetectedAt < 3000)) {
+                            // Within 3s of interruption — use longer silence window
+                            if (Date.now() - silenceStart > 2000) {
+                                stopRecordingAndSend();
+                            }
+                        } else {
+                            stopRecordingAndSend();
+                        }
+                    }
+                }
+            }, VAD_CHECK_INTERVAL);
+        }
+
+        function stopVAD() {
+            if (vadInterval) {
+                clearInterval(vadInterval);
+                vadInterval = null;
+            }
+        }
+
+        // Stop any currently playing bot audio
+        function stopCurrentAudio() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                currentAudio = null;
+            }
+            botIsPlaying = false;
+        }
+
+        // --- Socket events ---
+        socket.on('audio_response', (data) => {
+            typingEl.style.display = 'none';
+            // Stop any previous audio first
+            stopCurrentAudio();
+
+            // Play audio
+            const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+            const blob = new Blob([audioBytes], { type: 'audio/mp3' });
+            const url = URL.createObjectURL(blob);
+
+            // Add bot message with audio player
+            addBotMessage(data.text, url);
+
+            // Auto-play and track
+            currentAudio = new Audio(url);
+            botIsPlaying = true;
+            currentAudio.onended = () => {
+                currentAudio = null;
+                botIsPlaying = false;
+                // Auto-listen after bot finishes speaking (if not already listening)
+                if (autoListenEnabled && !isRecording) {
+                    setTimeout(() => startListening(), 100);
+                }
+            };
+            currentAudio.play().catch(e => {
+                console.log('Autoplay blocked:', e);
+                botIsPlaying = false;
+            });
+
+            // Start listening immediately while bot is speaking (for interruption detection)
+            // Pass true so it doesn't stop the bot audio
+            if (autoListenEnabled && !isRecording) {
+                setTimeout(() => startListening(true), 100);
+            }
+        });
+
+        socket.on('status', (data) => {
+            typingEl.style.display = 'none';
+            statusEl.textContent = data.message;
+        });
+
+        // --- UI functions ---
+        function addBotMessage(text, audioUrl) {
+            const div = document.createElement('div');
+            div.className = 'message bot';
+            div.innerHTML = `
+                <div class="avatar"><i class="fas fa-robot"></i></div>
+                <div>
+                    <div class="bubble">${text}</div>
+                    ${audioUrl ? `<div class="audio-player"><audio controls src="${audioUrl}"></audio></div>` : ''}
+                </div>`;
+            chatArea.appendChild(div);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function addUserMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'message user';
+            div.innerHTML = `
+                <div class="bubble">${text}</div>
+                <div class="avatar"><i class="fas fa-user"></i></div>`;
+            chatArea.appendChild(div);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function showThinking() {
+            typingEl.style.display = 'block';
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // --- Mode selection ---
+        function startInterview() {
+            chatArea.innerHTML = '';
+            statusEl.textContent = 'IT Interview Mode';
+            showThinking();
+            socket.emit('start_interview');
+        }
+
+        function showLanguagePicker() {
+            document.getElementById('language-picker').style.display = 'block';
+        }
+
+        function startLanguageTest() {
+            const lang = document.getElementById('lang-select').value;
+            document.getElementById('language-picker').style.display = 'none';
+            chatArea.innerHTML = '';
+            statusEl.textContent = 'Language Speaking Test';
+            showThinking();
+            socket.emit('start_language_test', { language: lang });
+        }
+
+        function startGeneral() {
+            chatArea.innerHTML = '';
+            statusEl.textContent = 'Free Chat Mode';
+            socket.emit('start_general');
+        }
+
+        function resetSession() {
+            stopCurrentAudio();  // Stop any playing audio
+            stopVAD();
+            if (isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                micBtn.classList.remove('recording');
+            }
+            if (micStream) {
+                micStream.getTracks().forEach(t => t.stop());
+                micStream = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+                analyser = null;
+            }
+            autoListenEnabled = false;
+            chatArea.innerHTML = '';
+            document.getElementById('language-picker').style.display = 'none';
+            socket.emit('reset');
+        }
+
+        // --- Text input ---
+        function sendText() {
+            const text = textInput.value.trim();
+            if (!text) return;
+            stopCurrentAudio();  // Interrupt bot if speaking
+            addUserMessage(text);
+            textInput.value = '';
+            showThinking();
+            socket.emit('text_message', { text: text });
+        }
+
+        // --- Audio recording with Voice Activity Detection ---
+        async function startListening(duringBotPlayback = false) {
+            if (isRecording) return;
+            // Only stop bot audio if user explicitly initiated (not during passive listening)
+            if (!duringBotPlayback) {
+                stopCurrentAudio();
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                statusEl.textContent = 'Browser does not support audio recording';
+                return;
+            }
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true }
+                });
+
+                // Set up Web Audio API for VAD
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(micStream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                source.connect(analyser);
+
+                // Set up MediaRecorder
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus' : 'audio/webm';
+                mediaRecorder = new MediaRecorder(micStream, { mimeType });
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    stopVAD();
+                    const blob = new Blob(audioChunks, { type: mimeType });
+                    // Only send if we actually detected meaningful speech
+                    if (speechDetected && blob.size > 1500) {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const b64 = btoa(
+                                new Uint8Array(reader.result)
+                                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
+                            );
+                            addUserMessage('🎤 [Voice message]');
+                            showThinking();
+                            socket.emit('audio_message', { audio: b64, interrupted: wasInterrupted });
+                            wasInterrupted = false;
+                        };
+                        reader.readAsArrayBuffer(blob);
+                    } else {
+                        // No speech detected — if bot was playing, just keep listening
+                        if (autoListenEnabled) {
+                            if (!botIsPlaying) {
+                                statusEl.textContent = '🎤 Waiting for you to speak...';
+                                setTimeout(() => startListening(), 150);
+                            }
+                        } else {
+                            statusEl.textContent = 'No speech detected. Tap mic to try again.';
+                        }
+                    }
+                    // Clean up mic stream
+                    if (micStream) {
+                        micStream.getTracks().forEach(t => t.stop());
+                        micStream = null;
+                    }
+                    if (audioContext) {
+                        audioContext.close();
+                        audioContext = null;
+                        analyser = null;
+                    }
+                };
+
+                mediaRecorder.start(250);
+                isRecording = true;
+                autoListenEnabled = true;
+                micBtn.classList.add('recording');
+                statusEl.textContent = '🎤 Listening... (speak, I\'ll detect when you stop)';
+
+                // Start voice activity detection
+                startVAD();
+
+            } catch (err) {
+                if (err.name === 'NotFoundError') {
+                    statusEl.textContent = 'No microphone found. Please connect one.';
+                } else if (err.name === 'NotAllowedError') {
+                    statusEl.textContent = 'Microphone permission denied. Allow it in browser settings.';
+                } else {
+                    statusEl.textContent = 'Mic error: ' + err.message;
+                }
+            }
+        }
+
+        function stopRecordingAndSend() {
+            if (!isRecording || !mediaRecorder) return;
+            mediaRecorder.stop();
+            isRecording = false;
+            micBtn.classList.remove('recording');
+            statusEl.textContent = 'Processing audio...';
+        }
+
+        // Toggle: click mic to start, click again to force-stop, or VAD auto-stops
+        async function toggleRecording() {
+            if (!isRecording) {
+                await startListening();
+            } else {
+                // Manual stop (force-stop override)
+                stopRecordingAndSend();
+            }
+        }
+    </script>
+</body>
+</html>
