@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, jsonify
+from flask import Flask, render_template, request, redirect, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from openai import OpenAI
 import os
@@ -576,6 +576,8 @@ def set_security_headers(response):
         "connect-src 'self' ws: wss:; "
         "media-src 'self' blob:; "
         "img-src 'self' data:; "
+        "manifest-src 'self'; "
+        "worker-src 'self'; "
         "frame-ancestors 'none';"
     )
     return response
@@ -604,6 +606,13 @@ def privacy_policy():
 def terms_of_service():
     """Terms of Service page — required by Google Play Store."""
     return render_template('terms.html')
+
+
+@app.route('/sw.js')
+def service_worker():
+    """Serve service worker from root scope for PWA."""
+    return send_from_directory(app.static_folder, 'sw.js',
+                               mimetype='application/javascript')
 
 
 @socketio.on('connect')
