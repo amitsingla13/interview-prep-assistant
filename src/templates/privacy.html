@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Interview Preparation Assistant</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.7;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: white;
+            min-height: 100vh;
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .last-updated {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #333;
+            margin-top: 30px;
+            margin-bottom: 10px;
+            font-size: 20px;
+        }
+        p, li {
+            margin-bottom: 10px;
+            font-size: 15px;
+        }
+        ul { margin-left: 20px; margin-bottom: 15px; }
+        a { color: #667eea; }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">&larr; Back to App</a>
+        <h1>Privacy Policy</h1>
+        <p class="last-updated">Last updated: June 2025</p>
+
+        <h2>1. Introduction</h2>
+        <p>Interview Preparation Assistant ("we", "our", "the app") is committed to protecting your privacy. 
+           This Privacy Policy explains how we collect, use, and safeguard your information when you use our application.</p>
+
+        <h2>2. Information We Collect</h2>
+        <p>We collect the following types of information:</p>
+        <ul>
+            <li><strong>Voice Data:</strong> When you use the voice feature, your audio is recorded and sent to 
+                OpenAI's Whisper API for transcription. Audio is processed in real-time and is NOT stored permanently 
+                on our servers.</li>
+            <li><strong>Text Messages:</strong> Messages you type are sent to OpenAI's GPT API for generating responses. 
+                These are stored temporarily in server memory during your session and deleted when you disconnect.</li>
+            <li><strong>Session Data:</strong> We store temporary session information (conversation history, mode selection, 
+                timestamps) in server memory. This data is automatically deleted when your session ends or expires (1 hour).</li>
+        </ul>
+
+        <h2>3. How We Use Your Information</h2>
+        <ul>
+            <li>To provide AI-powered interview practice, language practice, and general chat features</li>
+            <li>To transcribe your voice input into text (via OpenAI Whisper)</li>
+            <li>To generate AI responses (via OpenAI GPT)</li>
+            <li>To generate text-to-speech audio (via OpenAI TTS)</li>
+            <li>To moderate content for safety (via OpenAI Moderation API)</li>
+        </ul>
+
+        <h2>4. Data Storage & Retention</h2>
+        <ul>
+            <li>All conversation data is stored <strong>only in server memory</strong> and is never written to a database or file system.</li>
+            <li>Session data is automatically deleted after 1 hour of inactivity or when you close the app.</li>
+            <li>TTS audio responses may be cached temporarily in server memory to reduce costs. Cache is purged when the server restarts.</li>
+            <li>We do NOT store any user accounts, passwords, email addresses, or personal identifiers.</li>
+        </ul>
+
+        <h2>5. Third-Party Services</h2>
+        <p>We use the following third-party services:</p>
+        <ul>
+            <li><strong>OpenAI API:</strong> For speech-to-text (Whisper), text generation (GPT), text-to-speech (TTS), 
+                and content moderation. OpenAI's data usage policies apply. See 
+                <a href="https://openai.com/policies/privacy-policy" target="_blank">OpenAI's Privacy Policy</a>.</li>
+            <li><strong>Render.com:</strong> For hosting. See 
+                <a href="https://render.com/privacy" target="_blank">Render's Privacy Policy</a>.</li>
+            <li><strong>Cloudflare CDN:</strong> For serving static assets (Font Awesome icons, Socket.IO library).</li>
+        </ul>
+
+        <h2>6. Data Security</h2>
+        <p>We implement several security measures:</p>
+        <ul>
+            <li>HTTPS encryption for all data in transit</li>
+            <li>Rate limiting to prevent abuse</li>
+            <li>Content moderation to filter harmful content</li>
+            <li>Input validation and sanitization</li>
+            <li>No permanent data storage — everything is in-memory and ephemeral</li>
+        </ul>
+
+        <h2>7. Children's Privacy</h2>
+        <p>This app is not directed at children under 13. We do not knowingly collect information from children under 13. 
+           If you are a parent and believe your child has provided us information, please contact us.</p>
+
+        <h2>8. Microphone Permission</h2>
+        <p>The app requests microphone access only when you choose to use the voice feature. 
+           Microphone access is optional — you can use the app entirely via text input. 
+           Audio recording only occurs while the microphone button is active.</p>
+
+        <h2>9. Your Rights</h2>
+        <ul>
+            <li>You can reset your session at any time using the "Reset" button, which immediately deletes all your conversation data.</li>
+            <li>Since we don't store any persistent personal data, there is nothing to delete after your session ends.</li>
+            <li>You can use the app without providing any personal information.</li>
+        </ul>
+
+        <h2>10. Changes to This Policy</h2>
+        <p>We may update this Privacy Policy from time to time. Changes will be reflected on this page with an updated date.</p>
+
+        <h2>11. Contact Us</h2>
+        <p>If you have questions about this Privacy Policy, please contact us at: 
+           <strong>[your-email@example.com]</strong></p>
+    </div>
+</body>
+</html>

@@ -1,7 +1,7 @@
-flask
-flask-socketio
-openai>=1.0.0
-python-dotenv
-pyngrok
-gunicorn
-eventlet
+flask==3.1.2
+flask-socketio==5.6.0
+openai==2.21.0
+python-dotenv==1.2.1
+pyngrok==7.5.0
+gunicorn==23.0.0
+eventlet==0.40.4
