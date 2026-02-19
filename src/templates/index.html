@@ -64,6 +64,8 @@
         .mode-btn.interview:hover { background: #0056b3; }
         .mode-btn.language { background: #28a745; }
         .mode-btn.language:hover { background: #1e7e34; }
+        .mode-btn.helpdesk { background: #17a2b8; }
+        .mode-btn.helpdesk:hover { background: #117a8b; }
         .mode-btn.reset { background: #dc3545; font-size: 12px; padding: 8px 15px; }
         .mode-btn.reset:hover { background: #c82333; }
 
@@ -300,7 +302,7 @@
     <div class="container">
         <div class="header">
             <h1><i class="fas fa-headset"></i> Interview Prep Assistant</h1>
-            <p>Practice interviews & language speaking with AI</p>
+            <p>Practice interviews, language speaking & IT support with AI</p>
         </div>
 
         <div class="mode-buttons">
@@ -309,6 +311,9 @@
             </button>
             <button class="mode-btn language" onclick="showLanguagePicker()">
                 <i class="fas fa-language"></i> Language Practice
+            </button>
+            <button class="mode-btn helpdesk" onclick="startHelpdesk()">
+                <i class="fas fa-headset"></i> IT Helpdesk
             </button>
             <button class="mode-btn reset" onclick="resetSession()">
                 <i class="fas fa-redo"></i> Reset
@@ -726,6 +731,14 @@
             startSessionTimer();
             showThinking();
             socket.emit('start_interview');
+        }
+
+        function startHelpdesk() {
+            chatArea.innerHTML = '';
+            statusEl.textContent = 'IT Helpdesk';
+            startSessionTimer();
+            showThinking();
+            socket.emit('start_helpdesk');
         }
 
         function showLanguagePicker() {

@@ -5,3 +5,4 @@ python-dotenv==1.2.1
 pyngrok==7.5.0
 gunicorn==23.0.0
 eventlet==0.40.4
+openpyxl==3.1.5
