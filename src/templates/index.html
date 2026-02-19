@@ -521,9 +521,9 @@
         let speechDetected = false;
         let autoListenEnabled = false;  // true after first mic click
         let wasInterrupted = false; // Track if user interrupted bot
-        const SILENCE_THRESHOLD = 20;   // RMS volume below this = silence (0-128 range)
-        const SILENCE_DURATION = 1200;  // ms of silence before auto-stop (fast response)
-        const VAD_CHECK_INTERVAL = 80;  // ms between VAD checks (faster polling)
+        const SILENCE_THRESHOLD = 15;   // RMS volume below this = silence (lowered for better sensitivity)
+        const SILENCE_DURATION = 800;   // ms of silence before auto-stop (faster response)
+        const VAD_CHECK_INTERVAL = 50;  // ms between VAD checks (faster polling)
         const INTERRUPT_SPEECH_MIN_MS = 300; // must speak at least this long during bot playback to count as interruption
         let speechStartTime = null;     // when current speech burst started
         let interruptionDetectedAt = null; // timestamp when interruption was detected
@@ -788,15 +788,7 @@
                 isRecording = false;
                 micBtn.classList.remove('recording');
             }
-            if (micStream) {
-                micStream.getTracks().forEach(t => t.stop());
-                micStream = null;
-            }
-            if (audioContext) {
-                audioContext.close();
-                audioContext = null;
-                analyser = null;
-            }
+            releaseMicStream();  // Fully release mic on reset
             autoListenEnabled = false;
             voiceModeOn = false;
             document.getElementById('voice-toggle').checked = false;

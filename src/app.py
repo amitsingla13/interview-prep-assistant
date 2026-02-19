@@ -900,11 +900,22 @@ def handle_audio_message(data):
             emit('status', {'message': 'Audio too long. Please keep messages shorter.'})
             return
 
+        # Skip very small audio clips (likely noise or empty recordings)
+        if len(audio_bytes) < 1000:
+            logger.info(f"Audio too small ({len(audio_bytes)} bytes), skipping")
+            emit('status', {'message': 'Could not hear you clearly. Please try again.'})
+            return
+
         interrupted = data.get('interrupted', False)
 
         # Transcribe with Whisper
         language = conv.get('language', 'en')
-        user_text = transcribe_audio(audio_bytes, language=language)
+        try:
+            user_text = transcribe_audio(audio_bytes, language=language)
+        except Exception as e:
+            logger.error(f"Whisper transcription failed: {e}", exc_info=True)
+            emit('status', {'message': 'Could not process your audio. Please try again.'})
+            return
 
         if not user_text or user_text.strip() == '':
             emit('status', {'message': 'Could not hear you clearly. Please try again.'})
@@ -932,7 +943,7 @@ def handle_audio_message(data):
         process_and_respond(sid, user_text)
 
     except Exception as e:
-        logger.error(f"Error processing audio: {e}")
+        logger.error(f"Error processing audio: {e}", exc_info=True)
         emit('status', {'message': 'Error processing audio. Please try again.'})
 
 
