@@ -505,26 +505,10 @@
                 label.textContent = 'Voice mode';
                 badge.textContent = 'auto-TTS on';
                 badge.className = 'cost-badge active';
-                // Auto-start listening when voice mode is turned on
-                if (!isRecording) {
-                    autoListenEnabled = true;
-                    setTimeout(() => startListening(), 200);
-                }
             } else {
                 label.textContent = 'Text mode';
                 badge.textContent = '$$$ saving';
                 badge.className = 'cost-badge saving';
-                // Stop listening when voice mode is turned off
-                autoListenEnabled = false;
-                if (isRecording) {
-                    stopVAD();
-                    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                        mediaRecorder.stop();
-                    }
-                    isRecording = false;
-                    micBtn.classList.remove('recording');
-                }
-                statusEl.textContent = 'Text mode — type your message below.';
             }
         }
 
@@ -537,11 +521,10 @@
         let speechDetected = false;
         let autoListenEnabled = false;  // true after first mic click
         let wasInterrupted = false; // Track if user interrupted bot
-        const SILENCE_THRESHOLD = 25;   // RMS volume below this = silence (raised to ignore clicks/typing)
-        const SILENCE_DURATION = 1500;  // ms of silence before auto-stop (1.5s wait after user stops)
-        const VAD_CHECK_INTERVAL = 50;  // ms between VAD checks
-        const INTERRUPT_SPEECH_MIN_MS = 400; // must speak at least this long during bot playback to count as interruption
-        const MIN_SPEECH_DURATION_MS = 300; // minimum sustained speech to count as real speech (filters clicks/taps)
+        const SILENCE_THRESHOLD = 15;   // RMS volume below this = silence (lowered for better sensitivity)
+        const SILENCE_DURATION = 800;   // ms of silence before auto-stop (faster response)
+        const VAD_CHECK_INTERVAL = 50;  // ms between VAD checks (faster polling)
+        const INTERRUPT_SPEECH_MIN_MS = 300; // must speak at least this long during bot playback to count as interruption
         let speechStartTime = null;     // when current speech burst started
         let interruptionDetectedAt = null; // timestamp when interruption was detected
 
@@ -565,14 +548,11 @@
             vadInterval = setInterval(() => {
                 const rms = getRMS(analyser);
                 if (rms > SILENCE_THRESHOLD) {
-                    // Voice detected — set start time only once
-                    if (!speechStartTime) {
+                    // Voice detected
+                    if (!speechDetected) {
                         speechStartTime = Date.now();
                     }
-                    // Only mark as real speech after sustained sound (filters clicks/typing)
-                    if (Date.now() - speechStartTime > MIN_SPEECH_DURATION_MS) {
-                        speechDetected = true;
-                    }
+                    speechDetected = true;
                     silenceStart = null;
 
                     // If bot is playing audio, only interrupt after sustained speech
@@ -601,10 +581,6 @@
                             stopRecordingAndSend();
                         }
                     }
-                } else {
-                    // Sound dropped below threshold before speech was confirmed
-                    // Reset so brief noise spikes don't permanently set speechStartTime
-                    speechStartTime = null;
                 }
             }, VAD_CHECK_INTERVAL);
         }
@@ -646,9 +622,9 @@
             currentAudio.onended = () => {
                 currentAudio = null;
                 botIsPlaying = false;
-                // Auto-listen after bot finishes speaking in voice mode
-                if ((voiceModeOn || autoListenEnabled) && !isRecording) {
-                    setTimeout(() => startListening(), 200);
+                // Auto-listen after bot finishes speaking (if not already listening)
+                if (autoListenEnabled && !isRecording) {
+                    setTimeout(() => startListening(), 100);
                 }
             };
             currentAudio.play().catch(e => {
@@ -657,8 +633,8 @@
             });
 
             // Start listening immediately while bot is speaking (for interruption detection)
-            if ((voiceModeOn || autoListenEnabled) && !isRecording) {
-                setTimeout(() => startListening(true), 200);
+            if (autoListenEnabled && !isRecording) {
+                setTimeout(() => startListening(true), 100);
             }
         });
 
@@ -666,10 +642,6 @@
         socket.on('text_response', (data) => {
             typingEl.style.display = 'none';
             addBotMessageWithPlayBtn(data.text, data.msg_id);
-            // In voice mode, auto-start listening after receiving text response
-            if (voiceModeOn && !isRecording && !botIsPlaying) {
-                setTimeout(() => startListening(), 300);
-            }
         });
 
         // COST OPTIMIZATION: On-demand TTS audio received
@@ -902,19 +874,12 @@
                             wasInterrupted = false;
                         };
                         reader.readAsArrayBuffer(blob);
-                        // Auto re-listen after sending (will start once bot finishes speaking)
-                        // A short delay lets the socket emit complete first
                     } else {
-                        // No speech detected — keep listening if voice mode is on
-                        if (voiceModeOn) {
+                        // No speech detected — if bot was playing, just keep listening
+                        if (autoListenEnabled) {
                             if (!botIsPlaying) {
                                 statusEl.textContent = '🎤 Waiting for you to speak...';
-                                setTimeout(() => startListening(), 200);
-                            }
-                        } else if (autoListenEnabled) {
-                            if (!botIsPlaying) {
-                                statusEl.textContent = '🎤 Waiting for you to speak...';
-                                setTimeout(() => startListening(), 200);
+                                setTimeout(() => startListening(), 150);
                             }
                         } else {
                             statusEl.textContent = 'No speech detected. Tap mic to try again.';
