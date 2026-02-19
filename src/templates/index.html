@@ -521,10 +521,11 @@
         let speechDetected = false;
         let autoListenEnabled = false;  // true after first mic click
         let wasInterrupted = false; // Track if user interrupted bot
-        const SILENCE_THRESHOLD = 15;   // RMS volume below this = silence (lowered for better sensitivity)
-        const SILENCE_DURATION = 800;   // ms of silence before auto-stop (faster response)
-        const VAD_CHECK_INTERVAL = 50;  // ms between VAD checks (faster polling)
-        const INTERRUPT_SPEECH_MIN_MS = 300; // must speak at least this long during bot playback to count as interruption
+        const SILENCE_THRESHOLD = 25;   // RMS volume below this = silence (raised to ignore clicks/typing)
+        const SILENCE_DURATION = 1500;  // ms of silence before auto-stop (1.5s wait after user stops)
+        const VAD_CHECK_INTERVAL = 50;  // ms between VAD checks
+        const INTERRUPT_SPEECH_MIN_MS = 400; // must speak at least this long during bot playback to count as interruption
+        const MIN_SPEECH_DURATION_MS = 300; // minimum sustained speech to count as real speech (filters clicks/taps)
         let speechStartTime = null;     // when current speech burst started
         let interruptionDetectedAt = null; // timestamp when interruption was detected
 
@@ -552,7 +553,10 @@
                     if (!speechDetected) {
                         speechStartTime = Date.now();
                     }
-                    speechDetected = true;
+                    // Only mark as real speech after sustained sound (filters clicks/typing)
+                    if (speechStartTime && (Date.now() - speechStartTime > MIN_SPEECH_DURATION_MS)) {
+                        speechDetected = true;
+                    }
                     silenceStart = null;
 
                     // If bot is playing audio, only interrupt after sustained speech
