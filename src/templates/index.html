@@ -565,12 +565,12 @@
             vadInterval = setInterval(() => {
                 const rms = getRMS(analyser);
                 if (rms > SILENCE_THRESHOLD) {
-                    // Voice detected
-                    if (!speechDetected) {
+                    // Voice detected — set start time only once
+                    if (!speechStartTime) {
                         speechStartTime = Date.now();
                     }
                     // Only mark as real speech after sustained sound (filters clicks/typing)
-                    if (speechStartTime && (Date.now() - speechStartTime > MIN_SPEECH_DURATION_MS)) {
+                    if (Date.now() - speechStartTime > MIN_SPEECH_DURATION_MS) {
                         speechDetected = true;
                     }
                     silenceStart = null;
@@ -601,6 +601,10 @@
                             stopRecordingAndSend();
                         }
                     }
+                } else {
+                    // Sound dropped below threshold before speech was confirmed
+                    // Reset so brief noise spikes don't permanently set speechStartTime
+                    speechStartTime = null;
                 }
             }, VAD_CHECK_INTERVAL);
         }
