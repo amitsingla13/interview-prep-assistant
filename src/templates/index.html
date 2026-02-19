@@ -861,7 +861,7 @@
                     stopVAD();
                     const blob = new Blob(audioChunks, { type: mimeType });
                     // Only send if we actually detected meaningful speech
-                    if (speechDetected && blob.size > 1500) {
+                    if (speechDetected && blob.size > 2000) {
                         const reader = new FileReader();
                         reader.onload = () => {
                             const b64 = btoa(
@@ -870,7 +870,7 @@
                             );
                             addUserMessage('🎤 [Voice message]');
                             showThinking();
-                            socket.emit('audio_message', { audio: b64, interrupted: wasInterrupted });
+                            socket.emit('audio_message', { audio: b64, mimeType: mimeType, interrupted: wasInterrupted });
                             wasInterrupted = false;
                         };
                         reader.readAsArrayBuffer(blob);

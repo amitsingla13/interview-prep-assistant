@@ -541,13 +541,47 @@ def summarize_old_messages(messages):
     return "CONVERSATION SO FAR (summary): " + " | ".join(old_text[-6:])
 
 
-def transcribe_audio(audio_bytes, language=None):
+def transcribe_audio(audio_bytes, language=None, mime_type=None):
     """Use OpenAI Whisper to transcribe audio to text."""
     # SECURITY: Validate audio size
     if len(audio_bytes) > MAX_AUDIO_SIZE:
         raise ValueError("Audio file too large")
 
-    with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
+    # Determine file extension from MIME type or audio magic bytes
+    ext = '.webm'  # default
+    if mime_type:
+        mime_ext_map = {
+            'audio/webm': '.webm',
+            'audio/webm;codecs=opus': '.webm',
+            'audio/ogg': '.ogg',
+            'audio/ogg;codecs=opus': '.ogg',
+            'audio/mp4': '.mp4',
+            'audio/mpeg': '.mp3',
+            'audio/wav': '.wav',
+            'audio/x-wav': '.wav',
+            'audio/flac': '.flac',
+        }
+        ext = mime_ext_map.get(mime_type.lower().strip(), '.webm')
+    
+    # Fallback: detect format from magic bytes if MIME type didn't help
+    if len(audio_bytes) >= 4:
+        header = audio_bytes[:4]
+        if header[:4] == b'\x1aE\xdf\xa3':  # WebM/Matroska
+            ext = '.webm'
+        elif header[:4] == b'OggS':  # OGG
+            ext = '.ogg'
+        elif header[:4] == b'fLaC':  # FLAC
+            ext = '.flac'
+        elif header[:4] == b'RIFF':  # WAV
+            ext = '.wav'
+        elif header[:3] == b'ID3' or (header[0:2] == b'\xff\xfb'):  # MP3
+            ext = '.mp3'
+        elif header[:4] in (b'\x00\x00\x00\x1c', b'\x00\x00\x00\x18', b'\x00\x00\x00\x20'):
+            ext = '.mp4'  # MP4/M4A
+
+    logger.info(f"Transcribing audio: {len(audio_bytes)} bytes, mime={mime_type}, ext={ext}")
+
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
 
@@ -944,17 +978,18 @@ def handle_audio_message(data):
             return
 
         # Skip very small audio clips (likely noise or empty recordings)
-        if len(audio_bytes) < 1000:
+        if len(audio_bytes) < 2000:
             logger.info(f"Audio too small ({len(audio_bytes)} bytes), skipping")
             emit('status', {'message': 'Could not hear you clearly. Please try again.'})
             return
 
         interrupted = data.get('interrupted', False)
+        mime_type = data.get('mimeType', 'audio/webm')
 
         # Transcribe with Whisper
         language = conv.get('language', 'en')
         try:
-            user_text = transcribe_audio(audio_bytes, language=language)
+            user_text = transcribe_audio(audio_bytes, language=language, mime_type=mime_type)
         except Exception as e:
             logger.error(f"Whisper transcription failed: {e}", exc_info=True)
             emit('status', {'message': 'Could not process your audio. Please try again.'})
