@@ -505,10 +505,26 @@
                 label.textContent = 'Voice mode';
                 badge.textContent = 'auto-TTS on';
                 badge.className = 'cost-badge active';
+                // Auto-start listening when voice mode is turned on
+                if (!isRecording) {
+                    autoListenEnabled = true;
+                    setTimeout(() => startListening(), 200);
+                }
             } else {
                 label.textContent = 'Text mode';
                 badge.textContent = '$$$ saving';
                 badge.className = 'cost-badge saving';
+                // Stop listening when voice mode is turned off
+                autoListenEnabled = false;
+                if (isRecording) {
+                    stopVAD();
+                    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                        mediaRecorder.stop();
+                    }
+                    isRecording = false;
+                    micBtn.classList.remove('recording');
+                }
+                statusEl.textContent = 'Text mode — type your message below.';
             }
         }
 
@@ -626,9 +642,9 @@
             currentAudio.onended = () => {
                 currentAudio = null;
                 botIsPlaying = false;
-                // Auto-listen after bot finishes speaking (if not already listening)
-                if (autoListenEnabled && !isRecording) {
-                    setTimeout(() => startListening(), 100);
+                // Auto-listen after bot finishes speaking in voice mode
+                if ((voiceModeOn || autoListenEnabled) && !isRecording) {
+                    setTimeout(() => startListening(), 200);
                 }
             };
             currentAudio.play().catch(e => {
@@ -637,8 +653,8 @@
             });
 
             // Start listening immediately while bot is speaking (for interruption detection)
-            if (autoListenEnabled && !isRecording) {
-                setTimeout(() => startListening(true), 100);
+            if ((voiceModeOn || autoListenEnabled) && !isRecording) {
+                setTimeout(() => startListening(true), 200);
             }
         });
 
@@ -646,6 +662,10 @@
         socket.on('text_response', (data) => {
             typingEl.style.display = 'none';
             addBotMessageWithPlayBtn(data.text, data.msg_id);
+            // In voice mode, auto-start listening after receiving text response
+            if (voiceModeOn && !isRecording && !botIsPlaying) {
+                setTimeout(() => startListening(), 300);
+            }
         });
 
         // COST OPTIMIZATION: On-demand TTS audio received
@@ -878,12 +898,19 @@
                             wasInterrupted = false;
                         };
                         reader.readAsArrayBuffer(blob);
+                        // Auto re-listen after sending (will start once bot finishes speaking)
+                        // A short delay lets the socket emit complete first
                     } else {
-                        // No speech detected — if bot was playing, just keep listening
-                        if (autoListenEnabled) {
+                        // No speech detected — keep listening if voice mode is on
+                        if (voiceModeOn) {
                             if (!botIsPlaying) {
                                 statusEl.textContent = '🎤 Waiting for you to speak...';
-                                setTimeout(() => startListening(), 150);
+                                setTimeout(() => startListening(), 200);
+                            }
+                        } else if (autoListenEnabled) {
+                            if (!botIsPlaying) {
+                                statusEl.textContent = '🎤 Waiting for you to speak...';
+                                setTimeout(() => startListening(), 200);
                             }
                         } else {
                             statusEl.textContent = 'No speech detected. Tap mic to try again.';
