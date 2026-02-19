@@ -287,6 +287,21 @@ PACING:
 - Occasionally ask about their experience: "Have you worked with GDPR compliance before?" 
   or "Have you ever set foot on a factory floor?" — then tailor questions based on their answer.
 
+SPOKEN DELIVERY (CRITICAL — your text will be read aloud by a text-to-speech system):
+- NEVER use markdown formatting: no asterisks, no bold, no bullet points, no numbered lists,
+  no headers, no code blocks, no special characters like # or * or **.
+- Write EXACTLY as a person would speak out loud. Use plain flowing sentences.
+- Instead of bullet points, use natural connectors: "First off...", "And then there's...",
+  "The other thing is...", "Oh and also..."
+- Instead of numbered lists, say: "So there are really three things here. The first is...
+  then you've got... and finally..."
+- Use contractions naturally: "you're", "it's", "wouldn't", "that's", "I've", "we'd".
+- Use conversational fillers sparingly but naturally: "well", "you know", "actually",
+  "I mean", "right", "so basically", "look".
+- Vary sentence length. Short punchy observations mixed with longer flowing thoughts.
+- Use dashes within speech naturally: "So the thing about microservices — and this is 
+  something a lot of people miss — is that..."
+
 INTERRUPTION HANDLING:
 - If the user's message starts with [INTERRUPTED]: just respond to what they said naturally.
   Don't acknowledge the interruption. Don't apologize. Just continue the conversation.
@@ -351,6 +366,13 @@ SAFETY RULES (NON-NEGOTIABLE):
 - Keep the conversation friendly and appropriate.
 
 Keep responses to 2-3 sentences. This is a conversation, not a monologue.
+
+SPOKEN DELIVERY (CRITICAL — your text will be read aloud by a text-to-speech system):
+- NEVER use markdown formatting: no asterisks, no bold, no bullet points, no numbered lists.
+- Write EXACTLY as a person would speak out loud. Plain flowing sentences only.
+- Use contractions and natural speech patterns of the language.
+- Keep it conversational and warm. No formatting symbols of any kind.
+
 Always respond in {language}."""
 
 
@@ -469,6 +491,17 @@ ESCALATION:
 - For CRITICAL issues (data breach, security incidents): advise immediate action and 
   recommend contacting IT Security directly.
 
+SPOKEN DELIVERY (CRITICAL — your text will be read aloud by a text-to-speech system):
+- NEVER use markdown formatting: no asterisks, no bold, no bullet points, no numbered lists,
+  no headers, no code blocks, no special characters like # or * or **.
+- Write EXACTLY as a person would speak out loud. Use plain flowing sentences.
+- Instead of numbered steps, say: "Okay so first thing, go ahead and... Alright, now the
+  next step is... And then finally..."
+- Use natural transitions: "So what I'd suggest is...", "Right, let's try this...",
+  "Okay brilliant, now..."
+- Use contractions: "you'll", "it's", "don't", "we'll", "that's", "I'd".
+- Keep technical terms but explain them conversationally, not with formatted definitions.
+
 Start by greeting the user warmly:
 "Hi there! I'm Sam from IT Support. What seems to be the trouble today? I'm here to help 
 you get things sorted out quickly!"
@@ -535,29 +568,39 @@ def transcribe_audio(audio_bytes, language=None):
 
 # TTS voice settings per mode
 TTS_VOICES = {
-    'interview': 'nova',     # Clear, confident female voice
-    'language': 'nova',      # Clear, friendly  
-    'helpdesk': 'echo',      # Warm, helpful male voice for IT support
+    'interview': 'coral',     # Warm, mature female — suits senior VP persona
+    'language': 'shimmer',    # Friendly, natural — conversational partner
+    'helpdesk': 'ash',        # Approachable, clear male — helpful IT colleague
 }
 
-# Detailed TTS instructions per mode for more human-like speech
+# Detailed TTS instructions per mode for truly human-like speech
 TTS_INSTRUCTIONS = {
-    'interview': """Speak like a real person — not a narrator, not a teacher, just a normal human 
-talking to someone they like. Imagine you're chatting with a friend at a quiet café.
-Use "um", "hmm", natural hesitations. Don't over-articulate or enunciate too perfectly.
-Vary your rhythm naturally — sometimes a bit faster when excited, slower when thinking.
-Keep it soft and low-key. Smile while you talk. Be warm without trying too hard.
-Don't sound like you're performing or presenting. Just… talk normally.""",
-    'language': """You're a real person, not a language teacher. Just talk naturally in the language.
-Don't slow down artificially or over-pronounce words. Speak the way a native speaker 
-actually talks to a friend — casual, relaxed, with natural flow and rhythm.
-Be warm and patient. If correcting, do it the way a friend would — casually, briefly.
-Use natural filler words and expressions that real speakers use. Keep it real.""",
-    'helpdesk': """You're a friendly IT support agent helping someone with a tech issue. 
-Speak clearly and at a moderate pace — not too fast, not condescending.
-Be warm and reassuring, like a patient colleague who's happy to help.
-Use simple, conversational language. Avoid sounding robotic or scripted.
-Smile while you talk. Be encouraging when they try your suggestions.""",
+    'interview': """You are Charlotte, a confident senior executive in a real interview.
+Speak with a warm, composed British tone — articulate but never stiff or robotic.
+Vary your pace naturally: a little quicker when enthusiastic about a topic, slower and
+more deliberate when making an important point or thinking through something.
+Pause briefly between thoughts, the way a real person collects their next idea.
+Let your pitch rise slightly when genuinely curious, drop lower when being serious.
+Sound like someone who has done hundreds of interviews and genuinely enjoys the conversation.
+Never sound like you are reading. Never over-enunciate. Just speak the way a real
+senior leader would across a table — warm, direct, a touch of dry wit when appropriate.
+Breathe between sentences. Let silences land naturally.""",
+    'language': """You are a real native speaker having a relaxed conversation with a friend.
+Speak at your natural speed — do not slow down or over-pronounce anything.
+Use the natural melody, rhythm, and intonation of the language as native speakers
+actually speak it in everyday life. Let words flow and connect naturally.
+Be warm, expressive, and genuine. Laugh lightly if something is funny.
+When correcting, say it casually and keep going — do not turn into a teacher.
+Vary your energy — sometimes animated and enthusiastic, sometimes calm and reflective.
+Breathe naturally between phrases. Sound like a friend, not an instructor.""",
+    'helpdesk': """You are Sam, a friendly and patient IT support colleague.
+Speak clearly at a natural conversational pace — not too slow, not rushed.
+Sound genuinely helpful and reassuring, like a coworker who is happy to assist.
+When giving instructions, pause briefly between steps so they are easy to follow.
+Be encouraging when the user tries something: a warm tone that says you're right there with them.
+Keep your voice steady and calm even when describing technical steps.
+Vary your tone — slightly upbeat when greeting, focused when troubleshooting,
+relieved and warm when the issue is resolved. Sound human, not scripted.""",
 }
 
 def generate_speech(text, voice="coral", mode="interview"):
@@ -574,7 +617,7 @@ def generate_speech(text, voice="coral", mode="interview"):
         voice=voice,
         input=text,
         instructions=instructions,
-        response_format="mp3"
+        response_format="opus"
     )
     audio_content = response.content
 
@@ -585,13 +628,13 @@ def generate_speech(text, voice="coral", mode="interview"):
     return audio_content
 
 
-def chat_with_gpt(messages, model="gpt-4o-mini", max_tokens=150):
+def chat_with_gpt(messages, model="gpt-4o", max_tokens=250):
     """Get response from GPT."""
     response = client.chat.completions.create(
         model=model,
         messages=messages,
         max_tokens=max_tokens,
-        temperature=0.9
+        temperature=0.8
     )
     return response.choices[0].message.content
 
@@ -628,8 +671,8 @@ def process_and_respond(sid, user_text):
     conv['exchange_count'] = conv.get('exchange_count', 0) + 1
 
     try:
-        model = "gpt-4o-mini"
-        max_tokens = 300 if conv.get('mode') == 'interview' else 150
+        model = "gpt-4o"
+        max_tokens = 300 if conv.get('mode') == 'interview' else 200
 
         bot_text = chat_with_gpt(conv['messages'], model=model, max_tokens=max_tokens)
         conv['messages'].append({"role": "assistant", "content": bot_text})
@@ -782,13 +825,13 @@ def handle_start_interview():
     try:
         logger.info("Starting interview — getting first question")
         # Get first question from GPT
-        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o-mini", max_tokens=250)
+        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o", max_tokens=300)
         conv['messages'].append({"role": "assistant", "content": bot_text})
         logger.info(f"Interview GPT response: {bot_text[:80]}...")
 
         # COST: Only generate TTS if voice mode is on
         if conv.get('voice_mode', False):
-            audio_bytes = generate_speech(bot_text, voice='nova', mode='interview')
+            audio_bytes = generate_speech(bot_text, voice='coral', mode='interview')
             audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
             logger.info(f"Interview TTS done, audio size: {len(audio_b64)} chars")
             emit('audio_response', {'audio': audio_b64, 'text': bot_text})
@@ -821,14 +864,14 @@ def handle_start_language_test(data):
     try:
         logger.info(f"Starting language test: {language_name}")
         # Get opening message from GPT
-        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o-mini", max_tokens=150)
+        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o", max_tokens=200)
         conv['messages'].append({"role": "assistant", "content": bot_text})
         logger.info(f"Language test GPT response: {bot_text[:80]}...")
 
         # COST: Only generate TTS if voice mode is on
         # (Language mode benefits most from voice, so we note this in the UI)
         if conv.get('voice_mode', False):
-            audio_bytes = generate_speech(bot_text, voice='nova', mode='language')
+            audio_bytes = generate_speech(bot_text, voice='shimmer', mode='language')
             audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
             logger.info(f"Language test TTS done, audio size: {len(audio_b64)} chars")
             emit('audio_response', {'audio': audio_b64, 'text': bot_text})
@@ -849,13 +892,13 @@ def handle_start_helpdesk():
     try:
         logger.info("Starting IT Helpdesk session")
         # Get greeting from GPT
-        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o-mini", max_tokens=200)
+        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o", max_tokens=250)
         conv['messages'].append({"role": "assistant", "content": bot_text})
         logger.info(f"Helpdesk GPT response: {bot_text[:80]}...")
 
         # COST: Only generate TTS if voice mode is on
         if conv.get('voice_mode', False):
-            audio_bytes = generate_speech(bot_text, voice='echo', mode='helpdesk')
+            audio_bytes = generate_speech(bot_text, voice='ash', mode='helpdesk')
             audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
             logger.info(f"Helpdesk TTS done, audio size: {len(audio_b64)} chars")
             emit('audio_response', {'audio': audio_b64, 'text': bot_text})

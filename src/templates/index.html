@@ -610,7 +610,7 @@
 
             // Play audio
             const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
-            const blob = new Blob([audioBytes], { type: 'audio/mp3' });
+            const blob = new Blob([audioBytes], { type: 'audio/ogg; codecs=opus' });
             const url = URL.createObjectURL(blob);
 
             // Add bot message with audio player
@@ -648,7 +648,7 @@
         socket.on('tts_audio', (data) => {
             const msgId = data.msg_id;
             const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
-            const blob = new Blob([audioBytes], { type: 'audio/mp3' });
+            const blob = new Blob([audioBytes], { type: 'audio/ogg; codecs=opus' });
             const url = URL.createObjectURL(blob);
 
             // Update the play button to show audio player
