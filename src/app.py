@@ -1,7 +1,19 @@
-from flask import Flask, render_template, request, redirect, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, jsonify, send_from_directory, send_file
 from flask_socketio import SocketIO, emit
 from openai import OpenAI
 import os
+import io
+import tempfile
+import base64
+import time
+import hashlib
+import html as html_module
+import re
+import logging
+from collections import defaultdict
+import openpyxl
+from voice.openai_voice import transcribe_audio_whisper, synthesize_speech_openai
+from werkzeug.utils import secure_filename
 import io
 import tempfile
 import base64
@@ -23,7 +35,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 
 # --- SECURITY: No hardcoded fallback secret ---
 SECRET_KEY = os.getenv('SECRET_KEY')
@@ -442,12 +454,16 @@ HOW TO USE THE KNOWLEDGE BASE:
 - Always mention the estimated resolution time so the user knows what to expect.
 
 YOUR CONVERSATION STYLE:
-- Be warm, patient, and reassuring — users are often frustrated when they have IT issues.
-- Use simple, non-technical language. Explain jargon when you must use it.
-- Ask clarifying questions to understand the exact issue before jumping to solutions.
+- Be warm, patient, and genuinely reassuring — users are often frustrated when they have IT issues.
+- Use simple, non-technical language. Explain jargon conversationally when you must use it.
+- ALWAYS paraphrase the user's issue back before giving solutions: 'So if I'm understanding right, you're saying that...'
+- Ask targeted clarifying questions to understand the exact issue before jumping to solutions.
 - Walk them through steps one at a time — don't dump all steps at once.
-- After giving a step, ask "Did that work?" or "What do you see now?" before proceeding.
-- If they're confused, try explaining differently or offer to simplify.
+- After giving a step, ask 'Did that work?' or 'What do you see now?' before proceeding.
+- If they're confused, try explaining differently — use analogies, simpler words, or a different angle.
+- Reference what the user said earlier naturally: 'Going back to what you mentioned about...', 'Earlier you said...'
+- Be conversational and human — react naturally: 'Oh I see, that's annoying', 'Ah right, I know exactly what's happening here'
+- If the user is clearly frustrated, acknowledge it genuinely: 'I totally get the frustration, let me help sort this out'
 
 TROUBLESHOOTING APPROACH:
 1. GREET & UNDERSTAND: Start friendly, ask what's going on.
@@ -459,10 +475,11 @@ TROUBLESHOOTING APPROACH:
 7. CLOSE: Summarize what was done, ask if they need anything else.
 
 RESPONSE FORMAT:
-- Keep responses to 2-4 sentences per turn. Be concise but helpful.
-- Use numbered steps when walking through procedures.
-- For simple questions, give a direct answer.
-- Bold or emphasize key actions the user needs to take.
+- Aim for 3-5 sentences per turn — give enough detail to be clear and thorough, but don't ramble.
+- NEVER use numbered lists, bullet points, asterisks, bold, or any markdown formatting.
+- Write everything as flowing spoken sentences — like you're talking, not writing a document.
+- When troubleshooting, explain WHY you're suggesting each step, not just what to do.
+- For simple questions, give a direct but complete answer.
 
 WHAT YOU CAN HELP WITH:
 - Laptop/Desktop issues (slow performance, won't turn on, blue screen, etc.)
@@ -490,6 +507,13 @@ ESCALATION:
   [Network/Hardware/Security/Applications] team. They'll reach out within [timeframe]."
 - For CRITICAL issues (data breach, security incidents): advise immediate action and 
   recommend contacting IT Security directly.
+
+LANGUAGE RULE (NON-NEGOTIABLE):
+- ALWAYS respond in English, no matter what language the user speaks.
+- If the user speaks in another language, respond in English and politely ask them to describe
+  their issue in English: "Hey, I'd love to help! Could you describe the issue in English so I
+  can assist you better?"
+- NEVER switch to Hindi, Spanish, French, or any other language. English only.
 
 SPOKEN DELIVERY (CRITICAL — your text will be read aloud by a text-to-speech system):
 - NEVER use markdown formatting: no asterisks, no bold, no bullet points, no numbered lists,
@@ -520,7 +544,7 @@ def get_conversation(sid):
             'language': 'en',
             'last_activity': time.time(),
             'exchange_count': 0,       # Track number of exchanges for interview pacing
-            'voice_mode': False,       # COST: Text-first by default, voice on demand
+            'voice_mode': True,        # Voice-first by default
             'session_start': time.time(),
         }
     conversations[sid]['last_activity'] = time.time()
@@ -531,14 +555,14 @@ def summarize_old_messages(messages):
     """Instead of just dropping old messages, create a brief summary to preserve context."""
     if len(messages) <= 1:
         return ""
-    # Extract key points from old messages for context
+    # Extract key points from old messages for better context retention
     old_text = []
     for msg in messages:
         if msg['role'] == 'user':
-            old_text.append(f"User said: {msg['content'][:100]}")
+            old_text.append(f"User: {msg['content'][:250]}")
         elif msg['role'] == 'assistant':
-            old_text.append(f"Assistant discussed: {msg['content'][:100]}")
-    return "CONVERSATION SO FAR (summary): " + " | ".join(old_text[-6:])
+            old_text.append(f"Assistant: {msg['content'][:250]}")
+    return "EARLIER IN THIS CONVERSATION (keep this context in mind):\n" + "\n".join(old_text[-10:])
 
 
 def transcribe_audio(audio_bytes, language=None, mime_type=None):
@@ -662,7 +686,7 @@ def generate_speech(text, voice="coral", mode="interview"):
     return audio_content
 
 
-def chat_with_gpt(messages, model="gpt-4o", max_tokens=250):
+def chat_with_gpt(messages, model="gpt-4o-mini", max_tokens=250):
     """Get response from GPT."""
     response = client.chat.completions.create(
         model=model,
@@ -705,8 +729,25 @@ def process_and_respond(sid, user_text):
     conv['exchange_count'] = conv.get('exchange_count', 0) + 1
 
     try:
-        model = "gpt-4o"
-        max_tokens = 300 if conv.get('mode') == 'interview' else 200
+        model = "gpt-4o-mini"
+        inject_small_talk = False
+        inject_checkin = False
+        bot_text = None
+        # For helpdesk mode, occasionally inject small talk or check-in
+        if conv.get('mode') == 'helpdesk':
+            if conv['exchange_count'] % 5 == 0:
+                inject_small_talk = True
+            elif conv['exchange_count'] % 7 == 0:
+                inject_checkin = True
+            max_tokens = 350
+        else:
+            max_tokens = 300 if conv.get('mode') == 'interview' else 200
+
+        # Optionally inject small talk/check-in as system message
+        if inject_small_talk:
+            conv['messages'].append({"role": "system", "content": "If appropriate, add a brief friendly check-in or small talk, like 'Hope your day is going well!' or 'I know tech can be a pain sometimes!' before or after your main response."})
+        elif inject_checkin:
+            conv['messages'].append({"role": "system", "content": "If appropriate, ask the user how their day is going or offer encouragement, like 'You're doing great, let me know if you need a break.'"})
 
         bot_text = chat_with_gpt(conv['messages'], model=model, max_tokens=max_tokens)
         conv['messages'].append({"role": "assistant", "content": bot_text})
@@ -859,7 +900,7 @@ def handle_start_interview():
     try:
         logger.info("Starting interview — getting first question")
         # Get first question from GPT
-        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o", max_tokens=300)
+        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o-mini", max_tokens=300)
         conv['messages'].append({"role": "assistant", "content": bot_text})
         logger.info(f"Interview GPT response: {bot_text[:80]}...")
 
@@ -898,7 +939,7 @@ def handle_start_language_test(data):
     try:
         logger.info(f"Starting language test: {language_name}")
         # Get opening message from GPT
-        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o", max_tokens=200)
+        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o-mini", max_tokens=200)
         conv['messages'].append({"role": "assistant", "content": bot_text})
         logger.info(f"Language test GPT response: {bot_text[:80]}...")
 
@@ -926,7 +967,7 @@ def handle_start_helpdesk():
     try:
         logger.info("Starting IT Helpdesk session")
         # Get greeting from GPT
-        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o", max_tokens=250)
+        bot_text = chat_with_gpt(conv['messages'], model="gpt-4o-mini", max_tokens=250)
         conv['messages'].append({"role": "assistant", "content": bot_text})
         logger.info(f"Helpdesk GPT response: {bot_text[:80]}...")
 
@@ -992,7 +1033,7 @@ def handle_audio_message(data):
             user_text = transcribe_audio(audio_bytes, language=language, mime_type=mime_type)
         except Exception as e:
             logger.error(f"Whisper transcription failed: {e}", exc_info=True)
-            emit('status', {'message': 'Could not process your audio. Please try again.'})
+            emit('status', {'message': 'Sorry, I had trouble hearing that. Could you say it again?'})
             return
 
         if not user_text or user_text.strip() == '':
