@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="bg7" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a18cd1"/>
+      <stop offset="100%" style="stop-color:#fbc2eb"/>
+    </linearGradient>
+    <linearGradient id="hair7" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f0d58c"/>
+      <stop offset="100%" style="stop-color:#d4a84b"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <circle cx="100" cy="100" r="100" fill="url(#bg7)"/>
+  <!-- Neck -->
+  <rect x="83" y="134" width="34" height="24" rx="7" fill="#fce4d6"/>
+  <!-- Shoulders -->
+  <ellipse cx="100" cy="175" rx="55" ry="28" fill="#2e86c1"/>
+  <!-- Collar/neckline -->
+  <path d="M78 158 Q100 152 122 158" stroke="#fce4d6" stroke-width="0"/>
+  <!-- Pearl necklace -->
+  <path d="M75 156 Q100 164 125 156" stroke="none" fill="none"/>
+  <circle cx="80" cy="157" r="2" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <circle cx="87" cy="159" r="2" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <circle cx="94" cy="160" r="2" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <circle cx="100" cy="161" r="2.5" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <circle cx="106" cy="160" r="2" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <circle cx="113" cy="159" r="2" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <circle cx="120" cy="157" r="2" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <!-- Hair back -->
+  <ellipse cx="100" cy="72" rx="54" ry="50" fill="url(#hair7)"/>
+  <!-- Hair side flowing -->
+  <path d="M46 76 Q40 105 48 145 Q54 130 56 100 Q52 82 46 76Z" fill="url(#hair7)"/>
+  <path d="M154 76 Q160 105 152 145 Q146 130 144 100 Q148 82 154 76Z" fill="url(#hair7)"/>
+  <!-- Face -->
+  <ellipse cx="100" cy="88" rx="42" ry="46" fill="#fce4d6">
+    <animate attributeName="cy" values="88;87;88" dur="4.8s" repeatCount="indefinite"/>
+  </ellipse>
+  <!-- Hair front (side-parted) -->
+  <path d="M56 72 Q64 35 100 28 Q136 35 144 72 Q142 48 130 40 Q110 48 100 42 Q80 48 70 40 Q58 48 56 72Z" fill="url(#hair7)"/>
+  <!-- Side part sweep -->
+  <path d="M60 60 Q68 42 88 40 Q75 50 65 65Z" fill="url(#hair7)"/>
+  <!-- Eyes (blue) -->
+  <g>
+    <ellipse cx="82" cy="85" rx="7" ry="7.5" fill="white"/>
+    <ellipse cx="118" cy="85" rx="7" ry="7.5" fill="white"/>
+    <circle cx="83" cy="85" r="4" fill="#3498db">
+      <animate attributeName="cx" values="83;84;83;82;83" dur="5.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="119" cy="85" r="4" fill="#3498db">
+      <animate attributeName="cx" values="119;120;119;118;119" dur="5.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="82" cy="84" r="2" fill="#2980b9"/>
+    <circle cx="118" cy="84" r="2" fill="#2980b9"/>
+    <circle cx="84" cy="84" r="1.5" fill="white"/>
+    <circle cx="120" cy="84" r="1.5" fill="white"/>
+    <!-- Blink -->
+    <rect x="74" y="82" width="17" height="8" rx="4" fill="#fce4d6" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;0;1;0" dur="5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="110" y="82" width="17" height="8" rx="4" fill="#fce4d6" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;0;1;0" dur="5s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <!-- Eyebrows (light) -->
+  <path d="M73 75 Q82 70 92 74" stroke="#c9a858" stroke-width="1.8" fill="none"/>
+  <path d="M108 74 Q118 70 127 75" stroke="#c9a858" stroke-width="1.8" fill="none"/>
+  <!-- Nose -->
+  <path d="M99 88 Q96 98 94 102 Q99 104 104 102 Q101 98 99 88" fill="#f0d0ba" opacity="0.5"/>
+  <!-- Lips (soft pink) -->
+  <path d="M86 110 Q93 107 100 110 Q107 107 114 110" fill="#e08080" opacity="0.8"/>
+  <path d="M86 110 Q100 120 114 110" fill="#d4726a" opacity="0.5">
+    <animate attributeName="d" values="M86 110 Q100 120 114 110;M88 111 Q100 117 112 111;M86 110 Q100 120 114 110" dur="4s" repeatCount="indefinite"/>
+  </path>
+  <!-- Small dimples -->
+  <circle cx="78" cy="108" r="2" fill="#f0b0a0" opacity="0.3"/>
+  <circle cx="122" cy="108" r="2" fill="#f0b0a0" opacity="0.3"/>
+  <!-- Earrings (pearl studs) -->
+  <circle cx="56" cy="92" r="3" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+  <circle cx="144" cy="92" r="3" fill="#f8f8f8" stroke="#ddd" stroke-width="0.5"/>
+</svg>

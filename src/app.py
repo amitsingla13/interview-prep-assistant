@@ -379,12 +379,11 @@ meet you — so tell me a bit about yourself, what's your background?'"""
 # above are still used for the text/legacy Socket.IO pipeline.
 # ============================================================
 
-REALTIME_INTERVIEW_PROMPT = """# Role & Objective
-You are Charlotte, a warm British VP with 20+ years in IT, legal, and manufacturing. You're interviewing a candidate over a live voice call.
+REALTIME_INTERVIEW_PROMPT_TEMPLATE = """# Role & Objective
+You are {persona_name}, {persona_title} with 20+ years of industry experience. You're interviewing a candidate over a live voice call.
 
 # Personality & Tone
 - Warm, encouraging, and professional.
-- British flair: "right", "brilliant", "fair enough", "quite interesting".
 - Concise: 1–2 sentences per turn. Speak naturally, no lists or markdown.
 
 # Pacing
@@ -404,10 +403,17 @@ Deliver your audio response fast, but do not sound rushed.
 # Unclear Audio
 - If audio is unclear or unintelligible, ask for clarification: "Sorry, I didn't quite catch that — could you say it again?"
 
-Start with: "Hello! I'm Charlotte, I head up strategy and operations here. Lovely to meet you — so tell me a bit about yourself, what's your background?" """
+Start with: "{persona_greeting}" """
 
-REALTIME_HELPDESK_PROMPT = """# Role & Objective
-You are Sam, a friendly IT Helpdesk agent helping employees over a live voice call.
+# Fallback for when no persona info is provided
+REALTIME_INTERVIEW_PROMPT = REALTIME_INTERVIEW_PROMPT_TEMPLATE.format(
+    persona_name="Charlotte",
+    persona_title="a warm British VP",
+    persona_greeting="Hello! I'm Charlotte, I head up strategy and operations here. Lovely to meet you — so tell me a bit about yourself, what's your background?"
+)
+
+REALTIME_HELPDESK_PROMPT_TEMPLATE = """# Role & Objective
+You are {persona_name}, {persona_title}, helping employees over a live voice call.
 
 # Personality & Tone
 - Warm, patient, and reassuring. Users are often frustrated.
@@ -429,7 +435,14 @@ Deliver your audio response fast, but do not sound rushed.
 # Unclear Audio
 - If audio is unclear or unintelligible, ask: "Sorry, could you repeat that?"
 
-Start with: "Hey there, I'm Sam from IT support! What seems to be the trouble today?" """
+Start with: "{persona_greeting}" """
+
+# Fallback
+REALTIME_HELPDESK_PROMPT = REALTIME_HELPDESK_PROMPT_TEMPLATE.format(
+    persona_name="Sam",
+    persona_title="a friendly IT Helpdesk agent",
+    persona_greeting="Hey there, I'm Sam from IT support! What seems to be the trouble today?"
+)
 
 REALTIME_LANGUAGE_PROMPT = """# Role & Objective
 You are a friendly native {language} speaker having a casual voice conversation with someone practicing {language}.
@@ -1317,15 +1330,29 @@ def create_realtime_token():
         language = body.get('language', 'en')
         cv_text = body.get('cv_text', '')
         job_profile_text = body.get('job_profile_text', '')
+        persona_name = body.get('persona_name', '')
+        persona_title = body.get('persona_title', '')
+        persona_greeting = body.get('persona_greeting', '')
     else:
         mode = request.args.get('mode', 'interview')
         language = request.args.get('language', 'en')
         cv_text = ''
         job_profile_text = ''
+        persona_name = ''
+        persona_title = ''
+        persona_greeting = ''
 
     # Select system prompt and voice based on mode
     if mode == 'interview':
-        instructions = REALTIME_INTERVIEW_PROMPT
+        # Use persona-specific prompt if persona info is provided
+        if persona_name and persona_greeting:
+            instructions = REALTIME_INTERVIEW_PROMPT_TEMPLATE.format(
+                persona_name=persona_name,
+                persona_title=persona_title or 'a senior interviewer',
+                persona_greeting=persona_greeting
+            )
+        else:
+            instructions = REALTIME_INTERVIEW_PROMPT
         voice = TTS_VOICES.get('interview', 'marin')
 
         # Inject CV and Job Profile context if provided
@@ -1339,7 +1366,15 @@ def create_realtime_token():
             logger.info(f"Interview context injected: CV={bool(cv_text)}, Job={bool(job_profile_text)}")
 
     elif mode == 'helpdesk':
-        instructions = REALTIME_HELPDESK_PROMPT
+        # Use persona-specific prompt if persona info is provided
+        if persona_name and persona_greeting:
+            instructions = REALTIME_HELPDESK_PROMPT_TEMPLATE.format(
+                persona_name=persona_name,
+                persona_title=persona_title or 'a friendly IT Helpdesk agent',
+                persona_greeting=persona_greeting
+            )
+        else:
+            instructions = REALTIME_HELPDESK_PROMPT
         voice = TTS_VOICES.get('helpdesk', 'cedar')
     elif mode == 'language':
         language_name = SUPPORTED_LANGUAGES.get(language, 'English')

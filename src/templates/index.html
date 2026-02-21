@@ -87,8 +87,10 @@
         .mode-btn.language:hover { background: #1e7e34; }
         .mode-btn.helpdesk { background: #17a2b8; }
         .mode-btn.helpdesk:hover { background: #117a8b; }
-        .mode-btn.reset { background: #dc3545; font-size: 12px; padding: 8px 15px; }
+        .mode-btn.reset { background: #dc3545; font-size: 12px; padding: 8px 15px; transition: all 0.3s; }
         .mode-btn.reset:hover { background: #c82333; }
+        .mode-btn.reset.call-active { background: #28a745; }
+        .mode-btn.reset.call-active:hover { background: #1e7e34; }
         /* Active mode highlight */
         .mode-btn.active {
             outline: 3px solid #FFD700;
@@ -446,6 +448,12 @@
             font-size: 42px;
             color: white;
         }
+        .avatar-visual .avatar-svg {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
         .video-avatar-container .avatar-name {
             color: #ccc;
             font-size: 12px;
@@ -519,7 +527,7 @@
                 <i class="fas fa-headset"></i> Helpdesk
             </button>
             <button class="mode-btn reset" id="btn-reset" onclick="resetSession()">
-                <i class="fas fa-phone-slash"></i> End
+                <i class="fas fa-phone" id="end-icon"></i> <span id="end-label">End</span>
             </button>
         </div>
 
@@ -568,9 +576,7 @@
         <div class="video-avatar-container" id="video-avatar">
             <div class="speaking-ring" id="speaking-ring"></div>
             <div class="avatar-visual" id="avatar-visual">
-                <video id="avatar-video" loop muted playsinline style="display:none;">
-                    <source src="/static/interviewer.mp4" type="video/mp4">
-                </video>
+                <img id="avatar-svg" class="avatar-svg" src="" alt="Avatar" style="display:none;">
                 <i class="fas fa-user-tie avatar-fallback" id="avatar-fallback"></i>
             </div>
             <div class="avatar-name" id="avatar-name">Charlotte — Interviewer</div>
@@ -768,6 +774,103 @@
             language: { thinking: 'Language Coach is thinking...', name: 'Language Coach', icon: 'fa-language' },
         };
 
+        // 6 Avatar personas with distinct appearances and greetings
+        const AVATAR_PERSONAS = {
+            interview: [
+                { name: 'Charlotte', title: 'VP Strategy & Operations', avatar: '/static/avatars/charlotte.svg', icon: 'fa-user-tie', voice: 'marin',
+                  greetings: [
+                    "Hello! I'm Charlotte, I head up strategy and operations here. Lovely to meet you — so tell me a bit about yourself, what's your background?",
+                    "Hi there! Charlotte here, VP of strategy. So glad you could make it today — let's start with what brought you to this opportunity?",
+                    "Good to meet you! I'm Charlotte, I run strategy and operations. Let's keep this relaxed — why don't you tell me what excites you about this role?",
+                    "Welcome! I'm Charlotte from the leadership team. Really looking forward to our chat — shall we start with a quick walk through your career journey?"
+                  ]},
+                { name: 'James', title: 'Director of Engineering', avatar: '/static/avatars/james.svg', icon: 'fa-user-tie', voice: 'cedar',
+                  greetings: [
+                    "Good day! I'm James, Director of Engineering. I've been looking forward to this — could you start by telling me about your technical background?",
+                    "Hello! James here, I lead our engineering division. Let's dive right in — what's the most interesting project you've worked on recently?",
+                    "Pleased to meet you! I'm James from engineering. I like to keep these conversations practical — so tell me, what kind of challenges do you enjoy solving?",
+                    "Welcome aboard for today's chat! I'm James, I oversee engineering. Why don't we begin with what drew you to this field in the first place?"
+                  ]},
+                { name: 'Priya', title: 'Senior Technical Lead', avatar: '/static/avatars/priya.svg', icon: 'fa-user-tie', voice: 'marin',
+                  greetings: [
+                    "Hi! I'm Priya, Senior Technical Lead. Wonderful to connect with you — what's your story? Tell me about your journey so far.",
+                    "Hello there! Priya here, I lead our tech team. I always enjoy meeting new people — so what technologies are you most passionate about?",
+                    "Welcome! I'm Priya from the technical leadership team. Let's make this a real conversation — what's been keeping you busy professionally?",
+                    "Great to meet you! I'm Priya, Senior Tech Lead. I'd love to hear about your experience — shall we start with your current role?"
+                  ]},
+                { name: 'Marcus', title: 'Head of Product', avatar: '/static/avatars/marcus.svg', icon: 'fa-user-tie', voice: 'cedar',
+                  greetings: [
+                    "Hey, welcome! I'm Marcus, Head of Product here. Let's keep things casual — tell me about yourself and what you're looking for.",
+                    "What's up! Marcus here, I run the product team. Really glad to chat with you today — so what gets you fired up about this opportunity?",
+                    "Hi there! I'm Marcus from the product side. I like to keep interviews like a good conversation — so why don't you kick us off with your background?",
+                    "Good to see you! Marcus here, Head of Product. I've read through your profile and I'm curious — what would you say is your superpower?"
+                  ]},
+                { name: 'Elena', title: 'CTO', avatar: '/static/avatars/elena.svg', icon: 'fa-user-tie', voice: 'marin',
+                  greetings: [
+                    "Hello! I'm Elena, CTO here. I love meeting talented people — tell me, what's your story?",
+                    "Hi! Elena here, I'm the Chief Technology Officer. Let's skip the formalities — what are you most proud of in your career so far?",
+                    "Welcome! I'm Elena from the exec team. I believe the best interviews feel like a great conversation — so what brings you here today?",
+                    "So glad to meet you! I'm Elena, the CTO. Let's start simple — if you had to describe yourself in one sentence, what would it be?"
+                  ]},
+                { name: 'Sophia', title: 'VP Human Resources', avatar: '/static/avatars/sophia.svg', icon: 'fa-user-tie', voice: 'marin',
+                  greetings: [
+                    "Hello! I'm Sophia, VP of HR. It's lovely to meet you — let's start with what motivates you in your career.",
+                    "Hi there! Sophia here from HR leadership. I'm all about finding the right fit — so tell me, what kind of team environment do you thrive in?",
+                    "Welcome! I'm Sophia, I lead our people strategy. I'd love to understand what you're looking for — what's your ideal next step?",
+                    "Great to meet you! I'm Sophia from the leadership team. Let's have a real conversation — tell me about what you're passionate about professionally."
+                  ]}
+            ],
+            helpdesk: [
+                { name: 'Sam', title: 'IT Support Specialist', avatar: '/static/avatars/david.svg', icon: 'fa-headset', voice: 'cedar',
+                  greetings: [
+                    "Hey there, I'm Sam from IT support! What seems to be the trouble today?",
+                    "Hi! Sam here from the helpdesk. How can I help you out today?",
+                    "Hello! I'm Sam, your IT support buddy. What's going on with your tech today?",
+                    "Hey! Sam from IT here. Let me know what's happening and we'll get it sorted!"
+                  ]},
+                { name: 'Marcus', title: 'Senior Tech Support', avatar: '/static/avatars/marcus.svg', icon: 'fa-headset', voice: 'cedar',
+                  greetings: [
+                    "Hi! Marcus from tech support here. Walk me through what's happening.",
+                    "Hey there! I'm Marcus, senior support engineer. What can I do for you?",
+                    "Hello! Marcus here. I'm ready to troubleshoot — tell me what's going on.",
+                    "What's up! I'm Marcus from the IT team. Let's figure this out together!"
+                  ]},
+                { name: 'Priya', title: 'IT Helpdesk Lead', avatar: '/static/avatars/priya.svg', icon: 'fa-headset', voice: 'marin',
+                  greetings: [
+                    "Hi there! I'm Priya from IT support. How can I assist you today?",
+                    "Hello! Priya here, helpdesk lead. Tell me what's going on and we'll fix it.",
+                    "Hey! I'm Priya from the IT team. What issue are you running into?",
+                    "Welcome to IT support! I'm Priya. Let me know what you need help with."
+                  ]}
+            ],
+            language: [
+                { name: 'Elena', title: 'Language Coach', avatar: '/static/avatars/elena.svg', icon: 'fa-language', voice: 'marin',
+                  greetings: [] },
+                { name: 'Charlotte', title: 'Conversation Partner', avatar: '/static/avatars/charlotte.svg', icon: 'fa-language', voice: 'marin',
+                  greetings: [] },
+                { name: 'Sophia', title: 'Language Tutor', avatar: '/static/avatars/sophia.svg', icon: 'fa-language', voice: 'marin',
+                  greetings: [] }
+            ]
+        };
+
+        // Currently selected persona (set when mode starts)
+        let currentPersona = null;
+
+        function pickRandomPersona(mode) {
+            const personas = AVATAR_PERSONAS[mode] || AVATAR_PERSONAS.interview;
+            const idx = Math.floor(Math.random() * personas.length);
+            currentPersona = personas[idx];
+            // Update ROLE_LABELS dynamically
+            if (mode === 'interview') {
+                ROLE_LABELS.interview.name = currentPersona.name + ' — ' + currentPersona.title;
+            } else if (mode === 'helpdesk') {
+                ROLE_LABELS.helpdesk.name = currentPersona.name + ' — ' + currentPersona.title;
+            } else if (mode === 'language') {
+                ROLE_LABELS.language.name = currentPersona.name + ' — ' + currentPersona.title;
+            }
+            return currentPersona;
+        }
+
         // SECURITY: Escape HTML to prevent XSS
         function escapeHTML(str) {
             const div = document.createElement('div');
@@ -856,6 +959,15 @@
                 };
                 if (cvText) tokenBody.cv_text = cvText;
                 if (jobText) tokenBody.job_profile_text = jobText;
+                // Pass persona info so backend can customize the prompt
+                if (currentPersona) {
+                    tokenBody.persona_name = currentPersona.name;
+                    tokenBody.persona_title = currentPersona.title;
+                    if (currentPersona.greetings && currentPersona.greetings.length > 0) {
+                        const gIdx = Math.floor(Math.random() * currentPersona.greetings.length);
+                        tokenBody.persona_greeting = currentPersona.greetings[gIdx];
+                    }
+                }
 
                 const tokenRes = await fetch('/api/realtime/token', {
                     method: 'POST',
@@ -1878,36 +1990,43 @@
         // ============================================================
         function showVideoAvatar(mode) {
             const container = document.getElementById('video-avatar');
-            const video = document.getElementById('avatar-video');
+            const svgImg = document.getElementById('avatar-svg');
             const fallback = document.getElementById('avatar-fallback');
             const nameEl = document.getElementById('avatar-name');
             const role = ROLE_LABELS[mode] || ROLE_LABELS.interview;
-            nameEl.textContent = role.name;
-            fallback.className = 'fas ' + role.icon + ' avatar-fallback';
 
+            // Pick a random persona if not already set for this session
+            if (!currentPersona) pickRandomPersona(mode);
+            const persona = currentPersona;
+
+            nameEl.textContent = persona.name + ' — ' + persona.title;
+            fallback.className = 'fas ' + persona.icon + ' avatar-fallback';
+
+            // Always show the avatar container
             container.style.display = 'block';
 
-            // Try to load video for interview mode
-            if (mode === 'interview') {
-                video.play().then(() => {
-                    video.style.display = 'block';
+            // Load SVG avatar image
+            if (persona.avatar) {
+                svgImg.src = persona.avatar;
+                svgImg.onload = () => {
+                    svgImg.style.display = 'block';
                     fallback.style.display = 'none';
-                }).catch(() => {
-                    // Video not available — show icon fallback
-                    video.style.display = 'none';
+                };
+                svgImg.onerror = () => {
+                    svgImg.style.display = 'none';
                     fallback.style.display = 'block';
-                });
+                };
             } else {
-                video.style.display = 'none';
+                svgImg.style.display = 'none';
                 fallback.style.display = 'block';
             }
+            console.log('[Avatar] Showing persona:', persona.name, 'mode:', mode, 'avatar:', persona.avatar);
         }
 
         function hideVideoAvatar() {
             document.getElementById('video-avatar').style.display = 'none';
-            const video = document.getElementById('avatar-video');
-            video.pause();
-            video.style.display = 'none';
+            const svgImg = document.getElementById('avatar-svg');
+            svgImg.style.display = 'none';
             document.getElementById('avatar-fallback').style.display = 'block';
             setAvatarSpeaking(false);
         }
@@ -1969,6 +2088,22 @@
             }
         }
 
+        // --- End button: green when call active, red when ended ---
+        function setCallActive(isActive) {
+            const btn = document.getElementById('btn-reset');
+            const icon = document.getElementById('end-icon');
+            const label = document.getElementById('end-label');
+            if (isActive) {
+                btn.classList.add('call-active');
+                icon.className = 'fas fa-phone';
+                label.textContent = 'End Call';
+            } else {
+                btn.classList.remove('call-active');
+                icon.className = 'fas fa-phone-slash';
+                label.textContent = 'End';
+            }
+        }
+
         // --- Mode selection ---
         // Cleanup before switching modes — cancel streams, stop audio, stop recording
         function cleanupBeforeModeSwitch() {
@@ -1993,9 +2128,16 @@
         }
 
         function startInterview() {
+            // End any active call before showing setup
+            cleanupBeforeModeSwitch();
+            hideVideoAvatar();
+            hideTranscriptPanel();
+            chatArea.innerHTML = '';
+            currentPersona = null;
             // Show the interview setup panel (CV/Job upload)
             currentMode = 'interview';
             setActiveMode('btn-interview');
+            setCallActive(false);
             document.getElementById('interview-setup').style.display = 'block';
             document.getElementById('language-picker').style.display = 'none';
             statusEl.textContent = 'Upload your CV/Job Profile (optional) or start directly';
@@ -2007,17 +2149,17 @@
             chatArea.innerHTML = '';
             statusEl.textContent = 'Interview Assistant';
             currentMode = 'interview';
+            currentPersona = null; // Reset so new persona is picked
+            pickRandomPersona('interview');
             setActiveMode('btn-interview');
+            setCallActive(true);
             startSessionTimer();
             showVideoAvatar('interview');
             showTranscriptPanel();
 
             if (voiceModeOn) {
-                // REALTIME API: Direct browser ↔ OpenAI WebRTC
-                // Pass CV/Job context via query params so backend can inject into prompt
                 connectRealtime('interview', 'en', uploadedCV, uploadedJobProfile);
             } else {
-                // Text mode: Socket.IO
                 socket.emit('toggle_voice_mode', { voice_mode: false });
                 showThinking();
                 socket.emit('start_interview', { cv_text: uploadedCV, job_profile_text: uploadedJobProfile });
@@ -2030,7 +2172,10 @@
             chatArea.innerHTML = '';
             statusEl.textContent = 'IT Helpdesk';
             currentMode = 'helpdesk';
+            currentPersona = null;
+            pickRandomPersona('helpdesk');
             setActiveMode('btn-helpdesk');
+            setCallActive(true);
             startSessionTimer();
             showVideoAvatar('helpdesk');
             showTranscriptPanel();
@@ -2045,10 +2190,18 @@
         }
 
         function showLanguagePicker() {
+            // End any active call before showing language picker
+            cleanupBeforeModeSwitch();
+            hideVideoAvatar();
+            hideTranscriptPanel();
+            chatArea.innerHTML = '';
+            currentPersona = null;
             currentMode = 'language';
             setActiveMode('btn-language');
+            setCallActive(false);
             document.getElementById('language-picker').style.display = 'block';
             document.getElementById('interview-setup').style.display = 'none';
+            statusEl.textContent = 'Select a language to practice';
         }
 
         function startLanguageTest() {
@@ -2058,6 +2211,9 @@
             document.getElementById('language-picker').style.display = 'none';
             chatArea.innerHTML = '';
             statusEl.textContent = 'Language Practice Companion';
+            currentPersona = null;
+            pickRandomPersona('language');
+            setCallActive(true);
             startSessionTimer();
             showVideoAvatar('language');
             showTranscriptPanel();
@@ -2074,6 +2230,8 @@
         function resetSession() {
             // Disconnect Realtime API
             disconnectRealtime();
+            setCallActive(false);
+            currentPersona = null; // Reset persona for next session
             // Stop all audio, streaming, recording, and browser STT
             socket.emit('cancel_stream');
             stopCurrentAudio();

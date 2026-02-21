@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+    <linearGradient id="hair1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a2c2a"/>
+      <stop offset="100%" style="stop-color:#2d1a19"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <circle cx="100" cy="100" r="100" fill="url(#bg1)"/>
+  <!-- Neck -->
+  <rect x="82" y="135" width="36" height="25" rx="8" fill="#f0c8a0"/>
+  <!-- Shoulders/top -->
+  <ellipse cx="100" cy="175" rx="55" ry="28" fill="#2c3e50"/>
+  <ellipse cx="100" cy="172" rx="20" ry="10" fill="#ecf0f1"/>
+  <!-- Hair back -->
+  <ellipse cx="100" cy="75" rx="52" ry="50" fill="url(#hair1)"/>
+  <!-- Face -->
+  <ellipse cx="100" cy="90" rx="42" ry="46" fill="#f0c8a0">
+    <animate attributeName="cy" values="90;89;90" dur="4s" repeatCount="indefinite"/>
+  </ellipse>
+  <!-- Hair front -->
+  <path d="M58 72 Q65 40 100 35 Q135 40 142 72 Q140 55 120 48 Q100 52 80 48 Q60 55 58 72Z" fill="url(#hair1)"/>
+  <path d="M55 80 Q52 65 58 55 Q60 70 62 78Z" fill="url(#hair1)"/>
+  <path d="M145 80 Q148 65 142 55 Q140 70 138 78Z" fill="url(#hair1)"/>
+  <!-- Eyes -->
+  <g>
+    <ellipse cx="82" cy="85" rx="7" ry="7" fill="white"/>
+    <ellipse cx="118" cy="85" rx="7" ry="7" fill="white"/>
+    <circle cx="83" cy="85" r="4" fill="#3d2b1f">
+      <animate attributeName="cx" values="83;84;83;82;83" dur="6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="119" cy="85" r="4" fill="#3d2b1f">
+      <animate attributeName="cx" values="119;120;119;118;119" dur="6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="84" cy="84" r="1.5" fill="white"/>
+    <circle cx="120" cy="84" r="1.5" fill="white"/>
+    <!-- Blink -->
+    <rect x="74" y="82" width="17" height="8" rx="4" fill="#f0c8a0" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;1;0" dur="4s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="110" y="82" width="17" height="8" rx="4" fill="#f0c8a0" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;1;0" dur="4s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <!-- Eyebrows -->
+  <path d="M73 75 Q82 70 92 74" stroke="#3d2b1f" stroke-width="2" fill="none"/>
+  <path d="M108 74 Q118 70 127 75" stroke="#3d2b1f" stroke-width="2" fill="none"/>
+  <!-- Nose -->
+  <path d="M98 90 Q96 100 93 103 Q98 105 103 103 Q100 100 98 90" fill="#e0b890" opacity="0.6"/>
+  <!-- Mouth (animated smile) -->
+  <path d="M85 112 Q100 122 115 112" stroke="#c0756b" stroke-width="2.5" fill="none">
+    <animate attributeName="d" values="M85 112 Q100 122 115 112;M87 113 Q100 120 113 113;M85 112 Q100 122 115 112" dur="3s" repeatCount="indefinite"/>
+  </path>
+  <!-- Earrings -->
+  <circle cx="57" cy="95" r="3" fill="#FFD700"/>
+  <circle cx="143" cy="95" r="3" fill="#FFD700"/>
+</svg>

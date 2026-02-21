@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="bg6" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4facfe"/>
+      <stop offset="100%" style="stop-color:#00f2fe"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <circle cx="100" cy="100" r="100" fill="url(#bg6)"/>
+  <!-- Neck -->
+  <rect x="84" y="132" width="32" height="26" rx="6" fill="#f5cba7"/>
+  <!-- Shoulders (hoodie) -->
+  <ellipse cx="100" cy="175" rx="56" ry="30" fill="#2c3e50"/>
+  <!-- Hoodie string -->
+  <line x1="90" y1="158" x2="88" y2="175" stroke="#ecf0f1" stroke-width="1.5"/>
+  <line x1="110" y1="158" x2="112" y2="175" stroke="#ecf0f1" stroke-width="1.5"/>
+  <!-- Hoodie collar -->
+  <path d="M76 158 Q100 148 124 158" stroke="#34495e" stroke-width="3" fill="none"/>
+  <!-- Face -->
+  <ellipse cx="100" cy="86" rx="40" ry="44" fill="#f5cba7">
+    <animate attributeName="cy" values="86;85;86" dur="3.8s" repeatCount="indefinite"/>
+  </ellipse>
+  <!-- Hair (messy, modern) -->
+  <path d="M58 68 Q62 28 100 22 Q138 28 142 68 Q140 45 130 35 Q115 42 100 38 Q85 42 70 35 Q60 45 58 68Z" fill="#4a3728"/>
+  <!-- Messy top pieces -->
+  <path d="M75 32 Q78 22 85 28 Q80 30 75 32Z" fill="#4a3728"/>
+  <path d="M95 26 Q100 16 108 22 Q102 24 95 26Z" fill="#4a3728"/>
+  <path d="M120 30 Q125 20 130 28 Q126 30 120 30Z" fill="#4a3728"/>
+  <path d="M55 75 Q50 65 56 52 Q57 68 60 76Z" fill="#4a3728"/>
+  <path d="M145 75 Q150 65 144 52 Q143 68 140 76Z" fill="#4a3728"/>
+  <!-- Eyes (bright, alert) -->
+  <g>
+    <ellipse cx="82" cy="82" rx="7" ry="7.5" fill="white"/>
+    <ellipse cx="118" cy="82" rx="7" ry="7.5" fill="white"/>
+    <circle cx="83" cy="82" r="4" fill="#2980b9">
+      <animate attributeName="cx" values="83;85;83;81;83" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="119" cy="82" r="4" fill="#2980b9">
+      <animate attributeName="cx" values="119;121;119;117;119" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="84" cy="81" r="1.5" fill="white"/>
+    <circle cx="120" cy="81" r="1.5" fill="white"/>
+    <!-- Blink -->
+    <rect x="74" y="78" width="17" height="9" rx="4" fill="#f5cba7" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;1;0" dur="4.2s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="110" y="78" width="17" height="9" rx="4" fill="#f5cba7" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;0;1;0" dur="4.2s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <!-- Eyebrows -->
+  <path d="M73 72 Q82 67 92 71" stroke="#4a3728" stroke-width="2" fill="none"/>
+  <path d="M108 71 Q118 67 127 72" stroke="#4a3728" stroke-width="2" fill="none"/>
+  <!-- Nose -->
+  <path d="M98 86 Q96 96 93 100 Q98 102 103 100 Q100 96 98 86" fill="#e0b890" opacity="0.5"/>
+  <!-- Mouth (friendly grin) -->
+  <path d="M84 108 Q100 122 116 108" stroke="#c0756b" stroke-width="2" fill="none">
+    <animate attributeName="d" values="M84 108 Q100 122 116 108;M86 109 Q100 118 114 109;M84 108 Q100 122 116 108" dur="3s" repeatCount="indefinite"/>
+  </path>
+  <!-- Teeth -->
+  <path d="M90 110 Q100 116 110 110" fill="white" opacity="0.7">
+    <animate attributeName="d" values="M90 110 Q100 116 110 110;M92 111 Q100 114 108 111;M90 110 Q100 116 110 110" dur="3s" repeatCount="indefinite"/>
+  </path>
+  <!-- Headphones -->
+  <path d="M55 78 Q52 55 60 45 Q65 40 70 45" stroke="#333" stroke-width="4" fill="none"/>
+  <path d="M145 78 Q148 55 140 45 Q135 40 130 45" stroke="#333" stroke-width="4" fill="none"/>
+  <rect x="48" y="75" width="12" height="18" rx="4" fill="#333"/>
+  <rect x="140" y="75" width="12" height="18" rx="4" fill="#333"/>
+  <circle cx="54" cy="84" r="3" fill="#e74c3c"/>
+  <circle cx="146" cy="84" r="3" fill="#e74c3c"/>
+  <!-- Ears -->
+  <ellipse cx="58" cy="86" rx="5" ry="9" fill="#f5cba7"/>
+  <ellipse cx="142" cy="86" rx="5" ry="9" fill="#f5cba7"/>
+</svg>
