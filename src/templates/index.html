@@ -405,7 +405,7 @@
                     </span>
                     <i class="fas fa-volume-up" id="mode-icon-voice"></i>
                     <span id="voice-mode-label">Voice mode</span>
-                    <span class="cost-badge active" id="cost-badge">auto-TTS on</span>
+                    <span class="cost-badge active" id="cost-badge">realtime AI</span>
                 </label>
             </div>
             <div class="session-timer" id="session-timer">00:00</div>
@@ -492,6 +492,67 @@
         let isRecording = false;
         let currentAudio = null;  // Track currently playing audio
         let botIsPlaying = false; // True while bot audio is playing
+        let isProcessing = false; // True while waiting for bot response (prevents message piling)
+
+        // ============================================================
+        // STREAMING AUDIO: Progressive chunk queue for natural playback
+        // Blueprint: Streaming TTS Layer — chunk-based streaming
+        // ============================================================
+        let audioChunkQueue = [];     // Queue of {audio_b64, chunk_index} waiting to play
+        let isPlayingChunks = false;  // True while playing through the queue
+        let streamingTextBuffer = ''; // Accumulates text chunks for display
+        let streamingBubbleEl = null; // Reference to the bubble being streamed into
+        let streamStartTime = null;   // For latency tracking
+
+        function enqueueAudioChunk(audio_b64, chunkIndex) {
+            audioChunkQueue.push({ audio_b64, chunkIndex });
+            if (!isPlayingChunks) {
+                playNextChunk();
+            }
+        }
+
+        function playNextChunk() {
+            if (audioChunkQueue.length === 0) {
+                isPlayingChunks = false;
+                botIsPlaying = false;
+                // If interrupt monitor is running, let IT hand off the pre-warmed mic
+                // (avoids race where both try to start listening and pre-warmed stream is wasted)
+                if (autoListenEnabled && !isRecording && !interruptMonitorInterval) {
+                    setTimeout(() => startListening(), 30); // Tiny echo-guard delay
+                }
+                return;
+            }
+
+            isPlayingChunks = true;
+            botIsPlaying = true;
+            const chunk = audioChunkQueue.shift();
+            const audioBytes = Uint8Array.from(atob(chunk.audio_b64), c => c.charCodeAt(0));
+            const blob = new Blob([audioBytes], { type: 'audio/ogg; codecs=opus' });
+            const url = URL.createObjectURL(blob);
+
+            currentAudio = new Audio(url);
+            currentAudio.onended = () => {
+                URL.revokeObjectURL(url);
+                currentAudio = null;
+                // Play next chunk in queue
+                playNextChunk();
+            };
+            currentAudio.onerror = () => {
+                URL.revokeObjectURL(url);
+                currentAudio = null;
+                playNextChunk();
+            };
+            currentAudio.play().catch(e => {
+                console.log('Chunk autoplay blocked:', e);
+                currentAudio = null;
+                playNextChunk();
+            });
+        }
+
+        function flushAudioQueue() {
+            audioChunkQueue = [];
+            isPlayingChunks = false;
+        }
 
         // ============================================================
         // COST OPTIMIZATION: Voice mode state
@@ -501,6 +562,8 @@
         let sessionTimerInterval = null;
         let pendingTtsMessages = {};  // {msg_id: element} for on-demand TTS
         let currentMode = null;        // Track active mode: 'interview', 'helpdesk', 'language'
+        let currentLanguage = 'en';   // Track selected language for language mode
+        let waitingForBotAudio = false; // True between text_chunk and audio_chunk (pre-warm phase)
 
         // SECURITY: Escape HTML to prevent XSS
         function escapeHTML(str) {
@@ -531,13 +594,521 @@
             const badge = document.getElementById('cost-badge');
             if (voiceModeOn) {
                 label.textContent = 'Voice mode';
-                badge.textContent = 'auto-TTS on';
+                badge.textContent = 'realtime AI';
                 badge.className = 'cost-badge active';
+                // If a mode is active, connect Realtime API
+                if (currentMode) {
+                    connectRealtime(currentMode, currentLanguage);
+                }
             } else {
                 label.textContent = 'Text mode';
                 badge.textContent = '$$$ saving';
                 badge.className = 'cost-badge saving';
+                // Disconnect Realtime session
+                disconnectRealtime();
             }
+        }
+
+        // ============================================================
+        // OPENAI REALTIME API: WebRTC for ChatGPT-level voice quality
+        // Audio goes directly browser ↔ OpenAI (~300ms latency)
+        // Server VAD, auto-interruption, natural turn-taking built in
+        // ============================================================
+        let realtimePc = null;          // RTCPeerConnection
+        let realtimeDc = null;          // DataChannel for events
+        let realtimeAudio = null;       // Audio element for model output
+        let realtimeMicStream = null;   // Mic stream for WebRTC
+        let realtimeConnected = false;  // True when data channel is open
+        let realtimeSessionId = null;
+        let realtimeTextBuffer = '';    // Accumulates model text response
+        let realtimeBubbleEl = null;    // Current streaming bot bubble
+        let realtimeMuted = false;      // Mic mute state (user-initiated)
+        let realtimeModelSpeaking = false; // True while model is outputting audio
+
+        async function connectRealtime(mode, language) {
+            // Disconnect any existing session
+            disconnectRealtime();
+
+            // Kill ALL legacy voice components — they conflict with Realtime API
+            stopBrowserSTT();
+            stopInterruptionMonitor();
+            stopVAD();
+            if (isRecording && mediaRecorder) {
+                try { mediaRecorder.stop(); } catch(e) {}
+                isRecording = false;
+            }
+            releaseMicStream();
+            stopCurrentAudio();
+            flushAudioQueue();
+
+            try {
+                statusEl.textContent = '🔄 Connecting to voice AI...';
+
+                // 1. Get ephemeral token from our server
+                // All config (instructions, voice, VAD) is baked into the token
+                const tokenRes = await fetch(
+                    `/api/realtime/token?mode=${encodeURIComponent(mode)}&language=${encodeURIComponent(language || 'en')}`
+                );
+                if (!tokenRes.ok) {
+                    const errText = await tokenRes.text();
+                    throw new Error(`Token failed: ${tokenRes.status} ${errText}`);
+                }
+                const tokenData = await tokenRes.json();
+                const EPHEMERAL_KEY = tokenData.client_secret?.value || tokenData.value;
+                if (!EPHEMERAL_KEY) {
+                    console.error('[Realtime] Token response:', tokenData);
+                    throw new Error('No ephemeral key received');
+                }
+                console.log('[Realtime] Got ephemeral token');
+
+                // 2. Create RTCPeerConnection
+                realtimePc = new RTCPeerConnection();
+
+                // 3. Set up audio playback for model responses
+                realtimeAudio = document.createElement('audio');
+                realtimeAudio.autoplay = true;
+                realtimePc.ontrack = (e) => (realtimeAudio.srcObject = e.streams[0]);
+
+                // 4. Add microphone audio track
+                // Use simple constraints like OpenAI's reference implementation
+                realtimeMicStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                });
+                const micTrack = realtimeMicStream.getTracks()[0];
+                console.log('[Realtime] Mic track:', micTrack.label, 'enabled:', micTrack.enabled, 'muted:', micTrack.muted);
+                realtimePc.addTrack(micTrack);
+
+                // 5. Create data channel for Realtime events
+                realtimeDc = realtimePc.createDataChannel('oai-events');
+                realtimeDc.onopen = () => {
+                    console.log('[Realtime] Data channel open — session active');
+                    realtimeConnected = true;
+                    micBtn.classList.add('recording');
+                    statusEl.textContent = '🎤 Connected — speak naturally!';
+
+                    // Log connection details for debugging
+                    if (realtimePc) {
+                        const senders = realtimePc.getSenders();
+                        console.log('[Realtime] Senders:', senders.length);
+                        senders.forEach((s, i) => {
+                            console.log(`[Realtime] Sender ${i}: kind=${s.track?.kind} enabled=${s.track?.enabled} readyState=${s.track?.readyState}`);
+                        });
+                        const receivers = realtimePc.getReceivers();
+                        console.log('[Realtime] Receivers:', receivers.length);
+                        receivers.forEach((r, i) => {
+                            console.log(`[Realtime] Receiver ${i}: kind=${r.track?.kind}`);
+                        });
+                    }
+
+                    // Trigger initial greeting from the AI
+                    realtimeDc.send(JSON.stringify({
+                        type: 'response.create',
+                    }));
+                };
+                realtimeDc.onclose = () => {
+                    console.log('[Realtime] Data channel closed');
+                    realtimeConnected = false;
+                    micBtn.classList.remove('recording');
+                    statusEl.textContent = 'Voice session ended';
+                };
+                realtimeDc.onmessage = (event) => {
+                    handleRealtimeEvent(JSON.parse(event.data));
+                };
+
+                // 6. Handle ICE connection state
+                realtimePc.oniceconnectionstatechange = () => {
+                    const state = realtimePc.iceConnectionState;
+                    console.log('[Realtime] ICE state:', state);
+                    if (state === 'failed' || state === 'disconnected') {
+                        statusEl.textContent = 'Voice connection lost — reconnecting...';
+                        setTimeout(() => {
+                            if (!realtimeConnected && currentMode) {
+                                connectRealtime(currentMode, currentLanguage);
+                            }
+                        }, 2000);
+                    }
+                };
+
+                // 7. Create SDP offer
+                const offer = await realtimePc.createOffer();
+                await realtimePc.setLocalDescription(offer);
+
+                // 8. Connect DIRECTLY to OpenAI — matches reference implementation
+                // Include ?model= even with ephemeral tokens (reference does this)
+                const model = 'gpt-realtime';
+                const sdpRes = await fetch(
+                    `https://api.openai.com/v1/realtime/calls?model=${model}`,
+                    {
+                        method: 'POST',
+                        body: offer.sdp,
+                        headers: {
+                            'Authorization': `Bearer ${EPHEMERAL_KEY}`,
+                            'Content-Type': 'application/sdp',
+                        },
+                    }
+                );
+
+                if (!sdpRes.ok) {
+                    const errText = await sdpRes.text();
+                    console.error('[Realtime] SDP response:', sdpRes.status, errText);
+                    throw new Error(`SDP exchange failed: ${sdpRes.status} ${errText}`);
+                }
+
+                const answerSdp = await sdpRes.text();
+                console.log('[Realtime] Got SDP answer, length:', answerSdp.length);
+                await realtimePc.setRemoteDescription({
+                    type: 'answer',
+                    sdp: answerSdp,
+                });
+
+                console.log('[Realtime] Connected via ephemeral token (direct to OpenAI)');
+
+            } catch (err) {
+                console.error('[Realtime] Connection error:', err);
+                statusEl.textContent = 'Voice connection failed — using fallback mode';
+                disconnectRealtime();
+                // Fall back to old Socket.IO pipeline
+                fallbackToLegacyVoice(mode, language);
+            }
+        }
+
+        function disconnectRealtime() {
+            if (realtimeDc) {
+                try { realtimeDc.close(); } catch(e) {}
+                realtimeDc = null;
+            }
+            if (realtimePc) {
+                realtimePc.getSenders().forEach(sender => {
+                    if (sender.track) sender.track.stop();
+                });
+                try { realtimePc.close(); } catch(e) {}
+                realtimePc = null;
+            }
+            if (realtimeMicStream) {
+                realtimeMicStream.getTracks().forEach(t => t.stop());
+                realtimeMicStream = null;
+            }
+            if (realtimeAudio) {
+                realtimeAudio.pause();
+                realtimeAudio.srcObject = null;
+                realtimeAudio = null;
+            }
+            realtimeConnected = false;
+            realtimeSessionId = null;
+            realtimeTextBuffer = '';
+            realtimeBubbleEl = null;
+            realtimeMuted = false;
+            realtimeModelSpeaking = false;
+            micBtn.classList.remove('recording');
+        }
+
+        function fallbackToLegacyVoice(mode, language) {
+            // Use the old Socket.IO streaming pipeline as fallback
+            socket.emit('toggle_voice_mode', { voice_mode: true });
+            if (mode === 'interview') {
+                showThinking();
+                socket.emit('start_interview');
+            } else if (mode === 'helpdesk') {
+                showThinking();
+                socket.emit('start_helpdesk');
+            } else if (mode === 'language') {
+                showThinking();
+                socket.emit('start_language_test', { language: language });
+            }
+        }
+
+        // --- Interrupt support: cancel in-flight response ---
+        function interruptModel() {
+            if (!realtimeConnected || !realtimeModelSpeaking) return;
+            realtimeModelSpeaking = false;
+            if (realtimeDc && realtimeDc.readyState === 'open') {
+                // For WebRTC: use output_audio_buffer.clear to stop playback
+                // and truncate conversation (recommended by OpenAI docs)
+                realtimeDc.send(JSON.stringify({ type: 'response.cancel' }));
+                realtimeDc.send(JSON.stringify({ type: 'output_audio_buffer.clear' }));
+            }
+            statusEl.textContent = '🎤 Go ahead...';
+            console.log('[Realtime] User interrupted model');
+        }
+
+        // Keyboard interrupt: Space or Enter while model is speaking
+        document.addEventListener('keydown', (e) => {
+            if (!realtimeConnected || !realtimeModelSpeaking) return;
+            if (e.code === 'Space' || e.code === 'Enter') {
+                // Don't trigger if typing in the text input
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                e.preventDefault();
+                interruptModel();
+            }
+        });
+
+        function toggleRealtimeMute() {
+            if (!realtimeMicStream) return;
+            // If model is speaking, treat click as interrupt
+            if (realtimeModelSpeaking) {
+                interruptModel();
+                return;
+            }
+            realtimeMuted = !realtimeMuted;
+            realtimeMicStream.getTracks().forEach(track => {
+                track.enabled = !realtimeMuted;
+            });
+            if (realtimeMuted) {
+                micBtn.classList.remove('recording');
+                statusEl.textContent = '🔇 Muted — click mic to unmute';
+            } else {
+                micBtn.classList.add('recording');
+                statusEl.textContent = '🎤 Listening — speak naturally';
+            }
+        }
+
+        function handleRealtimeEvent(event) {
+            switch (event.type) {
+                case 'session.created':
+                    realtimeSessionId = event.session?.id || event.session;
+                    console.log('[Realtime] Session created:', realtimeSessionId);
+                    const sess = event.session || {};
+                    console.log('[Realtime] Model:', sess.model);
+                    console.log('[Realtime] Voice:', JSON.stringify(sess.audio?.output));
+                    console.log('[Realtime] VAD:', JSON.stringify(sess.audio?.input?.turn_detection));
+                    console.log('[Realtime] Transcription:', JSON.stringify(sess.audio?.input?.transcription));
+                    console.log('[Realtime] Modalities:', sess.output_modalities);
+                    console.log('[Realtime] Instructions (first 100):', (sess.instructions || '').substring(0, 100));
+                    break;
+
+                case 'session.updated':
+                    console.log('[Realtime] Session updated — semantic_vad active');
+                    break;
+
+                case 'input_audio_buffer.speech_started':
+                    // User started speaking — semantic_vad detected meaningful speech
+                    console.log('[Realtime] >>> Speech STARTED — mic audio IS flowing to OpenAI');
+                    statusEl.textContent = '🎤 Listening...';
+                    typingEl.style.display = 'none';
+                    // With interrupt_response: true, the server automatically
+                    // cancels any in-progress model response. We just update UI.
+                    if (realtimeModelSpeaking) {
+                        realtimeModelSpeaking = false;
+                        // Finalize partial bubble
+                        if (realtimeBubbleEl && realtimeTextBuffer.trim()) {
+                            realtimeBubbleEl.textContent = realtimeTextBuffer + ' [interrupted]';
+                            realtimeBubbleEl.classList.remove('streaming-bubble');
+                        }
+                        realtimeTextBuffer = '';
+                        realtimeBubbleEl = null;
+                        console.log('[Realtime] Cancelled stale response — user is speaking');
+                    }
+                    break;
+
+                case 'input_audio_buffer.speech_stopped':
+                    console.log('[Realtime] >>> Speech STOPPED — processing user input');
+                    statusEl.textContent = '⚡ Processing...';
+                    typingEl.style.display = 'block';
+                    break;
+
+                case 'conversation.item.input_audio_transcription.completed':
+                    // User's speech transcribed — show in chat
+                    console.log('[Realtime] >>> User transcript:', event.transcript);
+                    if (event.transcript && event.transcript.trim()) {
+                        addUserMessage(event.transcript.trim());
+                        // Log to backend for conversation history
+                        socket.emit('realtime_log', {
+                            role: 'user',
+                            text: event.transcript.trim(),
+                            mode: currentMode,
+                        });
+                    }
+                    break;
+
+                case 'response.audio_transcript.delta':
+                    // Model's text response streaming in real-time
+                    typingEl.style.display = 'none';
+                    const delta = event.delta;
+                    realtimeTextBuffer += delta;
+
+                    // Track model speaking state
+                    if (!realtimeModelSpeaking) {
+                        realtimeModelSpeaking = true;
+                        statusEl.textContent = '🔊 Speaking... (just speak to interrupt)';
+                    }
+
+                    if (!realtimeBubbleEl) {
+                        const div = document.createElement('div');
+                        div.className = 'message bot';
+                        div.innerHTML = `
+                            <div class="avatar"><i class="fas fa-robot"></i></div>
+                            <div>
+                                <div class="bubble streaming-bubble">${escapeHTML(realtimeTextBuffer)}</div>
+                            </div>`;
+                        chatArea.appendChild(div);
+                        realtimeBubbleEl = div.querySelector('.streaming-bubble');
+                    } else {
+                        realtimeBubbleEl.textContent = realtimeTextBuffer;
+                    }
+                    chatArea.scrollTop = chatArea.scrollHeight;
+                    break;
+
+                case 'response.audio_transcript.done':
+                    // Model finished this transcript segment
+                    if (realtimeBubbleEl) {
+                        realtimeBubbleEl.classList.remove('streaming-bubble');
+                    }
+                    // Log to backend
+                    if (realtimeTextBuffer.trim()) {
+                        socket.emit('realtime_log', {
+                            role: 'assistant',
+                            text: realtimeTextBuffer.trim(),
+                            mode: currentMode,
+                        });
+                    }
+                    realtimeTextBuffer = '';
+                    realtimeBubbleEl = null;
+                    break;
+
+                case 'response.done':
+                    typingEl.style.display = 'none';
+                    realtimeModelSpeaking = false;
+                    statusEl.textContent = '🎤 Ready — speak anytime';
+                    break;
+
+                case 'response.cancelled':
+                    // User interrupted — OpenAI auto-cancelled the response
+                    typingEl.style.display = 'none';
+                    statusEl.textContent = '🎤 Go ahead...';
+                    // Finalize any partial bubble
+                    if (realtimeBubbleEl) {
+                        if (realtimeTextBuffer.trim()) {
+                            realtimeBubbleEl.textContent = realtimeTextBuffer + ' [interrupted]';
+                            realtimeBubbleEl.classList.remove('streaming-bubble');
+                            socket.emit('realtime_log', {
+                                role: 'assistant',
+                                text: realtimeTextBuffer.trim() + ' [interrupted]',
+                                mode: currentMode,
+                            });
+                        } else {
+                            realtimeBubbleEl.parentElement.parentElement.remove();
+                        }
+                    }
+                    realtimeTextBuffer = '';
+                    realtimeBubbleEl = null;
+                    realtimeModelSpeaking = false;
+                    break;
+
+                case 'error':
+                    console.error('[Realtime] Error:', event.error);
+                    if (event.error && event.error.message) {
+                        statusEl.textContent = '⚠️ ' + event.error.message;
+                    } else {
+                        statusEl.textContent = '⚠️ Voice error — try speaking again';
+                    }
+                    break;
+
+                case 'rate_limits.updated':
+                    // Info only — log for monitoring
+                    console.log('[Realtime] Rate limits:', event.rate_limits);
+                    break;
+
+                default:
+                    // Log all events for debugging (except high-frequency audio)
+                    if (event.type && !event.type.startsWith('response.audio.delta')) {
+                        console.log('[Realtime] Event:', event.type, JSON.stringify(event).substring(0, 200));
+                    }
+            }
+        }
+
+        // ============================================================
+        // BROWSER SPEECH RECOGNITION: Real-time STT (instant, no upload)
+        // Falls back to MediaRecorder+Whisper for non-English or unsupported browsers
+        // ============================================================
+        let speechRecognition = null;
+        let useBrowserSTT = false;
+        let browserSTTResult = '';
+        let browserSTTFinal = false;
+
+        // Check if browser SpeechRecognition is available
+        const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognitionAPI) {
+            useBrowserSTT = true;
+            console.log('[STT] Browser SpeechRecognition available — using for instant transcription');
+        } else {
+            console.log('[STT] Browser SpeechRecognition not available — using Whisper fallback');
+        }
+
+        function startBrowserSTT() {
+            // Don't run legacy STT when Realtime API handles transcription
+            if (realtimeConnected) return false;
+            if (!SpeechRecognitionAPI) return false;
+            // Only use browser STT for English (other languages use Whisper for accuracy)
+            if (currentMode === 'language') return false;
+
+            try {
+                speechRecognition = new SpeechRecognitionAPI();
+                speechRecognition.continuous = true;
+                speechRecognition.interimResults = true;
+                speechRecognition.lang = 'en-US';
+                speechRecognition.maxAlternatives = 1;
+                browserSTTResult = '';
+                browserSTTFinal = false;
+
+                speechRecognition.onresult = (event) => {
+                    let interim = '';
+                    let finalTranscript = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript;
+                        if (event.results[i].isFinal) {
+                            finalTranscript += transcript;
+                        } else {
+                            interim += transcript;
+                        }
+                    }
+                    if (finalTranscript) {
+                        browserSTTResult += (browserSTTResult ? ' ' : '') + finalTranscript.trim();
+                    }
+                    // Show live transcription in status
+                    const display = browserSTTResult + (interim ? ' ' + interim : '');
+                    if (display.trim()) {
+                        statusEl.textContent = '🎤 ' + display.trim().substring(0, 80) + (display.length > 80 ? '...' : '');
+                    }
+                };
+
+                speechRecognition.onerror = (event) => {
+                    if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                        console.log('[STT] Speech recognition error:', event.error);
+                    }
+                };
+
+                speechRecognition.onend = () => {
+                    // Browser auto-stops recognition after silence timeout
+                    // Restart if we're still actively recording to keep capturing
+                    if (isRecording && !botIsPlaying) {
+                        try {
+                            speechRecognition.start();
+                            console.log('[STT] Restarted browser recognition (auto-ended)');
+                        } catch(e) {
+                            console.log('[STT] Could not restart:', e.message);
+                        }
+                    }
+                };
+
+                speechRecognition.start();
+                return true;
+            } catch (e) {
+                console.log('[STT] Failed to start browser speech recognition:', e);
+                return false;
+            }
+        }
+
+        function stopBrowserSTT() {
+            if (speechRecognition) {
+                try { speechRecognition.stop(); } catch(e) {}
+                speechRecognition = null;
+            }
+        }
+
+        function getBrowserSTTText() {
+            const text = browserSTTResult.trim();
+            browserSTTResult = '';
+            return text;
         }
 
         // --- VAD (Voice Activity Detection) ---
@@ -549,11 +1120,11 @@
         let speechDetected = false;
         let autoListenEnabled = true;   // auto-listen enabled by default
         let wasInterrupted = false; // Track if user interrupted bot
-        const SILENCE_THRESHOLD = 15;   // RMS volume below this = silence
-        const SILENCE_DURATION = 2500;  // 2.5s of silence — let user fully finish before sending
-        const VAD_CHECK_INTERVAL = 50;  // ms between VAD checks
-        const INTERRUPT_THRESHOLD = 35; // Much higher RMS threshold to ignore speaker echo
-        const INTERRUPT_SPEECH_MIN_MS = 800; // must speak 800ms to count as real interruption
+        const SILENCE_THRESHOLD = 12;   // RMS below this = silence (sensitive for reliable detection)
+        const SILENCE_DURATION = 1500;  // 1.5s silence — natural pacing (1s was cutting people off mid-thought)
+        const VAD_CHECK_INTERVAL = 40;  // ms between VAD checks
+        const INTERRUPT_THRESHOLD = 16; // RMS threshold for interrupt detection during bot playback
+        const INTERRUPT_SPEECH_MIN_MS = 150; // 150ms to count as real interruption (near-instant)
         let speechStartTime = null;     // when current speech burst started
         let interruptionDetectedAt = null; // timestamp when interruption was detected
 
@@ -564,26 +1135,47 @@
         let interruptMonitorInterval = null;
         let interruptSpeechStart = null;
 
+        // Pre-warm: acquire mic stream during bot playback so it's ready for instant handoff
+        let prewarmedMicStream = null;
+
         async function startInterruptionMonitor() {
+            // Don't run legacy interruption monitor when Realtime API handles everything
+            if (realtimeConnected) return;
             stopInterruptionMonitor();
             try {
+                // Acquire mic stream (will be handed off to startListening on interrupt)
                 interruptMonitorStream = await navigator.mediaDevices.getUserMedia({
                     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
                 });
+                prewarmedMicStream = interruptMonitorStream; // Save for handoff
                 interruptMonitorCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const source = interruptMonitorCtx.createMediaStreamSource(interruptMonitorStream);
                 interruptMonitorAnalyser = interruptMonitorCtx.createAnalyser();
-                interruptMonitorAnalyser.fftSize = 2048;
+                interruptMonitorAnalyser.fftSize = 2048; // Reliable RMS — 42ms window (512 was too noisy)
                 source.connect(interruptMonitorAnalyser);
                 interruptSpeechStart = null;
 
                 interruptMonitorInterval = setInterval(() => {
-                    if (!botIsPlaying) {
-                        // Bot finished — stop monitoring and start real recording
-                        stopInterruptionMonitor();
-                        if (autoListenEnabled && !isRecording) {
-                            setTimeout(() => startListening(), 300);
+                    if (!botIsPlaying && !waitingForBotAudio) {
+                        // Bot finished all audio — hand off mic to real recording
+                        const stream = interruptMonitorStream;
+                        // Clear references but DON'T stop the stream — hand it off
+                        clearInterval(interruptMonitorInterval);
+                        interruptMonitorInterval = null;
+                        if (interruptMonitorCtx) {
+                            interruptMonitorCtx.close().catch(() => {});
+                            interruptMonitorCtx = null;
+                            interruptMonitorAnalyser = null;
                         }
+                        interruptMonitorStream = null;
+                        interruptSpeechStart = null;
+                        if (autoListenEnabled && !isRecording) {
+                            // Hand off the pre-warmed stream (zero mic startup delay)
+                            startListening(stream);
+                        } else if (stream) {
+                            stream.getTracks().forEach(t => t.stop());
+                        }
+                        prewarmedMicStream = null;
                         return;
                     }
                     const rms = getRMS(interruptMonitorAnalyser);
@@ -592,12 +1184,27 @@
                         // User has been speaking long enough — real interruption
                         if (Date.now() - interruptSpeechStart > INTERRUPT_SPEECH_MIN_MS) {
                             console.log('[Interrupt] User interrupted bot, RMS:', rms.toFixed(1));
+                            // Blueprint: Interruption flow — cancel active LLM + TTS + flush buffer
+                            socket.emit('cancel_stream');  // Signal backend to cancel generation
                             stopCurrentAudio();
-                            stopInterruptionMonitor();
+
+                            // Grab the pre-warmed stream before clearing monitor state
+                            const stream = interruptMonitorStream;
+                            clearInterval(interruptMonitorInterval);
+                            interruptMonitorInterval = null;
+                            if (interruptMonitorCtx) {
+                                interruptMonitorCtx.close().catch(() => {});
+                                interruptMonitorCtx = null;
+                                interruptMonitorAnalyser = null;
+                            }
+                            interruptMonitorStream = null;
+                            interruptSpeechStart = null;
+
                             wasInterrupted = true;
                             statusEl.textContent = '🎤 Go ahead, I\'m listening...';
-                            // Start fresh recording AFTER bot is stopped (no bot audio contamination)
-                            setTimeout(() => startListening(), 200);
+                            // Hand off pre-warmed stream — ZERO getUserMedia delay
+                            startListening(stream);
+                            prewarmedMicStream = null;
                         }
                     } else {
                         interruptSpeechStart = null;
@@ -617,6 +1224,7 @@
                 interruptMonitorStream.getTracks().forEach(t => t.stop());
                 interruptMonitorStream = null;
             }
+            prewarmedMicStream = null;
             if (interruptMonitorCtx) {
                 interruptMonitorCtx.close().catch(() => {});
                 interruptMonitorCtx = null;
@@ -626,6 +1234,7 @@
         }
 
         function getRMS(analyserNode) {
+            if (!analyserNode) return 0;
             const data = new Uint8Array(analyserNode.fftSize);
             analyserNode.getByteTimeDomainData(data);
             let sum = 0;
@@ -655,7 +1264,10 @@
                     }
                     speechDetected = true;
                     silenceStart = null;
-                    statusEl.textContent = '🎤 Listening...';
+                    // Don't overwrite live transcription status if browser STT is showing it
+                    if (!useBrowserSTT || !browserSTTResult) {
+                        statusEl.textContent = '🎤 Listening...';
+                    }
                 } else if (speechDetected) {
                     // Was speaking, now silent
                     if (!silenceStart) {
@@ -674,14 +1286,26 @@
             }
         }
 
-        // Stop any currently playing bot audio
+        // Stop any currently playing bot audio + flush streaming queue
         function stopCurrentAudio() {
             if (currentAudio) {
-                currentAudio.pause();
-                currentAudio.currentTime = 0;
+                try {
+                    currentAudio.onended = null;
+                    currentAudio.onerror = null;
+                    currentAudio.pause();
+                    currentAudio.removeAttribute('src');
+                    currentAudio.load();  // Force release audio resource
+                } catch(e) {}
                 currentAudio = null;
             }
+            // Flush streaming audio queue (blueprint: flush playback buffer)
+            flushAudioQueue();
             botIsPlaying = false;
+            waitingForBotAudio = false;
+            // Reset streaming display state
+            streamingTextBuffer = '';
+            streamingBubbleEl = null;
+            streamStartTime = null;
         }
 
         // Release microphone stream fully
@@ -698,10 +1322,100 @@
         }
 
         // --- Socket events ---
+
+        // ============================================================
+        // STREAMING: Handle progressive text + audio chunks
+        // Blueprint: Streaming TTS Layer + Progressive Playback Buffer
+        // ============================================================
+        socket.on('text_chunk', (data) => {
+            // Don't process legacy streaming when Realtime API is active
+            if (realtimeConnected) return;
+            typingEl.style.display = 'none';
+
+            if (!streamStartTime) streamStartTime = Date.now();
+
+            // Pre-warm interrupt monitor on first text chunk (before audio arrives)
+            // This gives ~500-1000ms head start for mic initialization
+            if (data.chunk_index === 0 && autoListenEnabled && !interruptMonitorInterval) {
+                waitingForBotAudio = true;
+                startInterruptionMonitor();
+            }
+
+            // Progressive text display: append to existing bot bubble or create new one
+            const chunkText = data.text;
+            streamingTextBuffer += (streamingTextBuffer ? ' ' : '') + chunkText;
+
+            if (!streamingBubbleEl) {
+                // Create the bot message container on first chunk
+                const div = document.createElement('div');
+                div.className = 'message bot';
+                div.id = 'streaming-msg';
+                const safeText = escapeHTML(streamingTextBuffer);
+                div.innerHTML = `
+                    <div class="avatar"><i class="fas fa-robot"></i></div>
+                    <div>
+                        <div class="bubble streaming-bubble">${safeText}</div>
+                    </div>`;
+                chatArea.appendChild(div);
+                streamingBubbleEl = div.querySelector('.streaming-bubble');
+            } else {
+                // Update existing bubble with accumulated text
+                streamingBubbleEl.textContent = streamingTextBuffer;
+            }
+            chatArea.scrollTop = chatArea.scrollHeight;
+        });
+
+        socket.on('audio_chunk', (data) => {
+            // Don't process legacy audio when Realtime API handles audio via WebRTC
+            if (realtimeConnected) return;
+            typingEl.style.display = 'none';
+
+            if (!streamStartTime) streamStartTime = Date.now();
+
+            // Track time-to-first-audio
+            if (data.chunk_index === 0) {
+                const latency = Date.now() - (streamStartTime || Date.now());
+                console.log(`[Streaming] First audio chunk latency: ${latency}ms`);
+            }
+
+            // Queue audio chunk for sequential playback
+            enqueueAudioChunk(data.audio, data.chunk_index);
+
+            // Clear pre-warm flag — audio is now being played
+            waitingForBotAudio = false;
+
+            // Start interruption monitor if not already running (fallback)
+            if (data.chunk_index === 0 && autoListenEnabled && !interruptMonitorInterval) {
+                startInterruptionMonitor();
+            }
+        });
+
+        socket.on('stream_complete', (data) => {
+            // Don't process legacy streaming when Realtime API is active
+            if (realtimeConnected) return;
+            // Streaming is done — finalize the message
+            isProcessing = false;
+            const totalTime = Date.now() - (streamStartTime || Date.now());
+            console.log(`[Streaming] Complete: ${data.total_chunks} chunks, ${totalTime}ms`);
+
+            // Add audio player to the completed message if we have audio
+            if (streamingBubbleEl && streamingBubbleEl.parentElement) {
+                // Message is already displayed progressively — nothing more needed
+            }
+
+            // Reset streaming state
+            streamingTextBuffer = '';
+            streamingBubbleEl = null;
+            streamStartTime = null;
+        });
+
+        // Legacy: Full audio response (used for non-streaming fallback)
         socket.on('audio_response', (data) => {
+            if (realtimeConnected) return;
             typingEl.style.display = 'none';
             // Stop any previous audio first
             stopCurrentAudio();
+            flushAudioQueue();
 
             // Play audio
             const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
@@ -717,9 +1431,9 @@
             currentAudio.onended = () => {
                 currentAudio = null;
                 botIsPlaying = false;
-                // Auto-listen after bot finishes speaking (if not already listening)
+                // Auto-listen after bot finishes speaking (zero delay)
                 if (autoListenEnabled && !isRecording) {
-                    setTimeout(() => startListening(), 100);
+                    startListening();
                 }
             };
             currentAudio.play().catch(e => {
@@ -727,7 +1441,7 @@
                 botIsPlaying = false;
                 // Auto-listen since playback failed
                 if (autoListenEnabled && !isRecording) {
-                    setTimeout(() => startListening(), 300);
+                    startListening();
                 }
             });
 
@@ -740,6 +1454,7 @@
         // COST OPTIMIZATION: Text-only response with on-demand play button
         socket.on('text_response', (data) => {
             typingEl.style.display = 'none';
+            isProcessing = false;
             addBotMessageWithPlayBtn(data.text, data.msg_id);
         });
 
@@ -776,11 +1491,22 @@
         });
 
         socket.on('status', (data) => {
+            if (realtimeConnected) return;
             typingEl.style.display = 'none';
+            isProcessing = false;
             statusEl.textContent = data.message;
             // Auto-restart listening after error/status if auto-listen is active
             if (autoListenEnabled && !isRecording && !botIsPlaying) {
-                setTimeout(() => startListening(), 1500);
+                setTimeout(() => startListening(), 500);
+            }
+        });
+
+        // Show user's transcribed text in chat (replaces voice message indicator)
+        socket.on('user_transcription', (data) => {
+            // Don't show legacy transcription when Realtime API handles it
+            if (realtimeConnected) return;
+            if (data.text) {
+                addUserMessage(data.text);
             }
         });
 
@@ -850,6 +1576,7 @@
         function showThinking() {
             typingEl.style.display = 'block';
             chatArea.scrollTop = chatArea.scrollHeight;
+            isProcessing = true;
         }
 
         // --- Active mode highlight ---
@@ -864,26 +1591,62 @@
         }
 
         // --- Mode selection ---
+        // Cleanup before switching modes — cancel streams, stop audio, stop recording
+        function cleanupBeforeModeSwitch() {
+            // Disconnect Realtime API if active
+            disconnectRealtime();
+            // Legacy cleanup
+            socket.emit('cancel_stream');
+            stopCurrentAudio();
+            flushAudioQueue();
+            stopVAD();
+            stopBrowserSTT();
+            stopInterruptionMonitor();
+            if (isRecording && mediaRecorder) {
+                try { mediaRecorder.stop(); } catch(e) {}
+                isRecording = false;
+                micBtn.classList.remove('recording');
+            }
+            releaseMicStream();
+            wasInterrupted = false;
+            waitingForBotAudio = false;
+            isProcessing = false;
+        }
+
         function startInterview() {
+            cleanupBeforeModeSwitch();
             chatArea.innerHTML = '';
             statusEl.textContent = 'Interview Assistant';
             currentMode = 'interview';
             setActiveMode('btn-interview');
             startSessionTimer();
-            showThinking();
-            socket.emit('start_interview');
-            socket.emit('toggle_voice_mode', { voice_mode: voiceModeOn });
+
+            if (voiceModeOn) {
+                // REALTIME API: Direct browser ↔ OpenAI WebRTC
+                connectRealtime('interview');
+            } else {
+                // Text mode: Socket.IO
+                socket.emit('toggle_voice_mode', { voice_mode: false });
+                showThinking();
+                socket.emit('start_interview');
+            }
         }
 
         function startHelpdesk() {
+            cleanupBeforeModeSwitch();
             chatArea.innerHTML = '';
             statusEl.textContent = 'IT Helpdesk';
             currentMode = 'helpdesk';
             setActiveMode('btn-helpdesk');
             startSessionTimer();
-            showThinking();
-            socket.emit('start_helpdesk');
-            socket.emit('toggle_voice_mode', { voice_mode: voiceModeOn });
+
+            if (voiceModeOn) {
+                connectRealtime('helpdesk');
+            } else {
+                socket.emit('toggle_voice_mode', { voice_mode: false });
+                showThinking();
+                socket.emit('start_helpdesk');
+            }
         }
 
         function showLanguagePicker() {
@@ -893,20 +1656,32 @@
         }
 
         function startLanguageTest() {
+            cleanupBeforeModeSwitch();
             const lang = document.getElementById('lang-select').value;
+            currentLanguage = lang;
             document.getElementById('language-picker').style.display = 'none';
             chatArea.innerHTML = '';
             statusEl.textContent = 'Language Practice Companion';
             startSessionTimer();
-            showThinking();
-            socket.emit('start_language_test', { language: lang });
-            socket.emit('toggle_voice_mode', { voice_mode: voiceModeOn });
+
+            if (voiceModeOn) {
+                connectRealtime('language', lang);
+            } else {
+                socket.emit('toggle_voice_mode', { voice_mode: false });
+                showThinking();
+                socket.emit('start_language_test', { language: lang });
+            }
         }
 
         function resetSession() {
-            // Stop all audio and recording
+            // Disconnect Realtime API
+            disconnectRealtime();
+            // Stop all audio, streaming, recording, and browser STT
+            socket.emit('cancel_stream');
             stopCurrentAudio();
+            flushAudioQueue();
             stopVAD();
+            stopBrowserSTT();
             stopInterruptionMonitor();
             if (typeof stopTTSPlayback === 'function') stopTTSPlayback();
             if (isRecording && mediaRecorder) {
@@ -923,14 +1698,15 @@
             voiceModeOn = true;
             document.getElementById('voice-toggle').checked = true;
             document.getElementById('voice-mode-label').textContent = 'Voice mode';
-            document.getElementById('cost-badge').textContent = 'auto-TTS on';
+            document.getElementById('cost-badge').textContent = 'realtime AI';
             document.getElementById('cost-badge').className = 'cost-badge active';
             if (sessionTimerInterval) clearInterval(sessionTimerInterval);
             document.getElementById('session-timer').textContent = '00:00';
             pendingTtsMessages = {};
             chatArea.innerHTML = '';
             document.getElementById('language-picker').style.display = 'none';
-            socket.emit('reset');
+            // Send reset with current mode so backend re-initializes correctly
+            socket.emit('reset', { mode: currentMode, language: currentLanguage });
 
             // Stay in the same module — keep button highlighted, show ready status
             if (currentMode === 'interview') {
@@ -950,7 +1726,7 @@
 
         // --- Text input ---
         function sendText() {
-            if (!isConnected) {
+            if (!isConnected && !realtimeConnected) {
                 statusEl.textContent = 'Not connected — please wait...';
                 return;
             }
@@ -961,15 +1737,42 @@
                 text = text.substring(0, 2000);
                 statusEl.textContent = 'Message trimmed to 2000 characters.';
             }
-            stopCurrentAudio();  // Interrupt bot if speaking
-            addUserMessage(text);
-            textInput.value = '';
-            showThinking();
-            socket.emit('text_message', { text: text });
+
+            if (realtimeConnected && realtimeDc) {
+                // REALTIME MODE: Send text through WebRTC data channel
+                addUserMessage(text);
+                textInput.value = '';
+                // Create a conversation item with the text
+                realtimeDc.send(JSON.stringify({
+                    type: 'conversation.item.create',
+                    item: {
+                        type: 'message',
+                        role: 'user',
+                        content: [{ type: 'input_text', text: text }],
+                    },
+                }));
+                // Trigger response generation
+                realtimeDc.send(JSON.stringify({
+                    type: 'response.create',
+                    response: { modalities: ['audio', 'text'] },
+                }));
+                // Log to backend
+                socket.emit('realtime_log', { role: 'user', text: text, mode: currentMode });
+            } else {
+                // LEGACY MODE: Socket.IO text
+                socket.emit('cancel_stream');
+                stopCurrentAudio();
+                addUserMessage(text);
+                textInput.value = '';
+                showThinking();
+                socket.emit('text_message', { text: text, mode: currentMode });
+            }
         }
 
         // --- Audio recording with Voice Activity Detection ---
-        async function startListening() {
+        async function startListening(existingStream) {
+            // Don't run legacy recording when Realtime API handles everything
+            if (realtimeConnected) return;
             if (isRecording) return;
             // If bot is still playing, don't start recording (use interrupt monitor instead)
             if (botIsPlaying) return;
@@ -981,15 +1784,30 @@
                 return;
             }
             try {
-                micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, noiseSuppression: true }
-                });
+                // Reuse pre-warmed or existing mic stream (avoids 100-300ms getUserMedia delay)
+                if (existingStream && existingStream.active) {
+                    micStream = existingStream;
+                    console.log('[Mic] Reusing mic stream (zero acquisition delay)');
+                } else {
+                    // Release dead stream if any before acquiring new one
+                    if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+                    micStream = await navigator.mediaDevices.getUserMedia({
+                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+                    });
+                }
+
+                // Close old AudioContext to prevent resource leaks
+                if (audioContext) {
+                    audioContext.close().catch(() => {});
+                    audioContext = null;
+                    analyser = null;
+                }
 
                 // Set up Web Audio API for VAD
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioContext.createMediaStreamSource(micStream);
                 analyser = audioContext.createAnalyser();
-                analyser.fftSize = 2048;
+                analyser.fftSize = 2048; // Reliable RMS — 42ms window (512 was only 10ms, too noisy)
                 source.connect(analyser);
 
                 // Set up MediaRecorder
@@ -1004,41 +1822,62 @@
 
                 mediaRecorder.onstop = () => {
                     stopVAD();
-                    const blob = new Blob(audioChunks, { type: mimeType });
-                    // Only send if we actually detected meaningful speech
-                    if (speechDetected && blob.size > 2000) {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                            const b64 = btoa(
-                                new Uint8Array(reader.result)
-                                    .reduce((data, byte) => data + String.fromCharCode(byte), '')
-                            );
-                            addUserMessage('🎤 [Voice message]');
-                            showThinking();
-                            socket.emit('audio_message', { audio: b64, mimeType: mimeType, interrupted: wasInterrupted });
-                            wasInterrupted = false;
-                        };
-                        reader.readAsArrayBuffer(blob);
+
+                    // ============================================================
+                    // FAST PATH: Use browser SpeechRecognition text (instant)
+                    // SLOW PATH: Use Whisper via audio upload (fallback)
+                    // ============================================================
+                    const browserText = getBrowserSTTText();
+                    stopBrowserSTT();
+
+                    // If still processing a previous response, cancel it first
+                    if (isProcessing) {
+                        socket.emit('cancel_stream');
+                        stopCurrentAudio();
+                        isProcessing = false;
+                        wasInterrupted = true;
+                    }
+
+                    if (browserText && browserText.length > 1) {
+                        // FAST PATH: Browser already transcribed — send as text instantly
+                        console.log('[STT] Using browser transcription:', browserText.substring(0, 50));
+                        addUserMessage(browserText);
+                        showThinking();
+                        socket.emit('text_message', { text: browserText, interrupted: wasInterrupted, mode: currentMode });
+                        wasInterrupted = false;
+                        // Release mic — bot will respond with interrupt monitor
+                        releaseMicStream();
                     } else {
-                        // No speech detected — if bot was playing, just keep listening
-                        if (autoListenEnabled) {
-                            if (!botIsPlaying) {
-                                statusEl.textContent = '🎤 Waiting for you to speak...';
-                                setTimeout(() => startListening(), 150);
-                            }
+                        // SLOW PATH: No browser STT text — use Whisper (upload audio)
+                        const blob = new Blob(audioChunks, { type: mimeType });
+                        if (speechDetected && blob.size > 2000) {
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                const b64 = btoa(
+                                    new Uint8Array(reader.result)
+                                        .reduce((data, byte) => data + String.fromCharCode(byte), '')
+                                );
+                                // Don't show user message here — backend will emit transcription
+                                showThinking();
+                                socket.emit('audio_message', { audio: b64, mimeType: mimeType, interrupted: wasInterrupted, mode: currentMode });
+                                wasInterrupted = false;
+                            };
+                            reader.readAsArrayBuffer(blob);
+                            // Release mic — bot will respond with interrupt monitor
+                            releaseMicStream();
                         } else {
-                            statusEl.textContent = 'No speech detected. Tap mic to try again.';
+                            // NO SPEECH — reuse mic stream for instant restart (no getUserMedia gap)
+                            if (autoListenEnabled && !botIsPlaying) {
+                                statusEl.textContent = '🎤 Waiting for you to speak...';
+                                // Pass existing mic — avoids 100-300ms getUserMedia delay
+                                startListening(micStream);
+                                return; // Don't release mic — startListening reuses it
+                            }
+                            if (!autoListenEnabled) {
+                                statusEl.textContent = 'No speech detected. Tap mic to try again.';
+                            }
+                            releaseMicStream();
                         }
-                    }
-                    // Clean up mic stream
-                    if (micStream) {
-                        micStream.getTracks().forEach(t => t.stop());
-                        micStream = null;
-                    }
-                    if (audioContext) {
-                        audioContext.close();
-                        audioContext = null;
-                        analyser = null;
                     }
                 };
 
@@ -1047,6 +1886,11 @@
                 autoListenEnabled = true;
                 micBtn.classList.add('recording');
                 statusEl.textContent = '🎤 Listening... (speak, I\'ll detect when you stop)';
+
+                // Start browser SpeechRecognition for instant transcription (English only)
+                if (useBrowserSTT && currentMode !== 'language') {
+                    startBrowserSTT();
+                }
 
                 // Start voice activity detection
                 startVAD();
@@ -1067,11 +1911,22 @@
             mediaRecorder.stop();
             isRecording = false;
             micBtn.classList.remove('recording');
-            statusEl.textContent = 'Processing audio...';
+            // If browser STT is active, show instant status (no "processing" delay)
+            if (useBrowserSTT && browserSTTResult) {
+                statusEl.textContent = '⚡ Sending...';
+            } else {
+                statusEl.textContent = 'Processing audio...';
+            }
         }
 
-        // Toggle: click mic to start, click again to force-stop, or VAD auto-stops
+        // Toggle: click mic to start/stop voice, or mute/unmute in Realtime mode
         async function toggleRecording() {
+            if (realtimeConnected) {
+                // REALTIME MODE: Mute/unmute mic
+                toggleRealtimeMute();
+                return;
+            }
+            // LEGACY MODE: Start/stop recording with VAD
             if (!isRecording) {
                 await startListening();
             } else {

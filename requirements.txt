@@ -1,3 +1,4 @@
+# ── Core ──────────────────────────────────────────────
 flask==3.1.2
 flask-socketio==5.6.0
 openai==2.21.0
@@ -6,3 +7,18 @@ pyngrok==7.5.0
 gunicorn==23.0.0
 eventlet==0.40.4
 openpyxl==3.1.5
+requests==2.32.5
+requests-toolbelt>=1.0.0
+
+# ── Enterprise (optional – app works without these) ───
+redis>=5.0.0
+flask-sqlalchemy>=3.1.0
+psycopg2-binary>=2.9.9
+celery>=5.4.0
+
+# ── Observability (optional) ─────────────────────────
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-exporter-otlp>=1.25.0
+opentelemetry-instrumentation-flask>=0.46b0
+prometheus-client>=0.21.0
