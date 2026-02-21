@@ -1209,22 +1209,135 @@ def index():
 
 
 # ============================================================
+# FILE UPLOAD: Extract text from CV / Job Profile documents
+# Supports PDF, DOCX, DOC, TXT — extracts plain text for prompt context
+# ============================================================
+ALLOWED_UPLOAD_EXTENSIONS = {'pdf', 'doc', 'docx', 'txt'}
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_UPLOAD_EXTENSIONS
+
+def extract_text_from_file(file_storage):
+    """Extract plain text from uploaded file (PDF, DOCX, TXT)."""
+    filename = secure_filename(file_storage.filename)
+    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+
+    if ext == 'txt':
+        return file_storage.read().decode('utf-8', errors='ignore')
+
+    elif ext == 'pdf':
+        try:
+            import PyPDF2
+            reader = PyPDF2.PdfReader(file_storage)
+            text = ''
+            for page in reader.pages:
+                text += page.extract_text() or ''
+            return text.strip()
+        except ImportError:
+            # Fallback: try pdfminer
+            try:
+                from pdfminer.high_level import extract_text as pdf_extract
+                file_storage.seek(0)
+                return pdf_extract(file_storage).strip()
+            except ImportError:
+                return file_storage.read().decode('utf-8', errors='ignore')
+
+    elif ext in ('doc', 'docx'):
+        try:
+            import docx
+            file_storage.seek(0)
+            with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as tmp:
+                tmp.write(file_storage.read())
+                tmp_path = tmp.name
+            doc = docx.Document(tmp_path)
+            text = '\n'.join(para.text for para in doc.paragraphs)
+            os.unlink(tmp_path)
+            return text.strip()
+        except ImportError:
+            return file_storage.read().decode('utf-8', errors='ignore')
+
+    return file_storage.read().decode('utf-8', errors='ignore')
+
+
+@app.route('/api/upload-document', methods=['POST'])
+def upload_document():
+    """Upload a CV or Job Profile document, extract text, return it."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['file']
+    doc_type = request.form.get('type', 'cv')  # 'cv' or 'job'
+
+    if not file.filename:
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Unsupported file type. Use PDF, DOCX, DOC, or TXT'}), 400
+
+    # Check file size
+    file.seek(0, os.SEEK_END)
+    size = file.tell()
+    file.seek(0)
+    if size > MAX_UPLOAD_SIZE:
+        return jsonify({'error': 'File too large (max 5MB)'}), 400
+
+    try:
+        text = extract_text_from_file(file)
+        if not text or len(text.strip()) < 10:
+            return jsonify({'error': 'Could not extract text from file'}), 400
+
+        # Truncate to reasonable size (max 4000 chars for prompt context)
+        if len(text) > 4000:
+            text = text[:4000] + '...[truncated]'
+
+        logger.info(f"Document uploaded: type={doc_type}, filename={file.filename}, chars={len(text)}")
+        return jsonify({'text': text, 'type': doc_type, 'chars': len(text)})
+
+    except Exception as e:
+        logger.error(f"Document upload error: {e}", exc_info=True)
+        return jsonify({'error': 'Failed to process file'}), 500
+
+
+# ============================================================
 # REALTIME API: Unified WebRTC interface (single round trip)
 # Browser gets ephemeral token → connects DIRECTLY to OpenAI WebRTC
 # This is the recommended approach per OpenAI's reference implementation
 # ============================================================
-@app.route('/api/realtime/token', methods=['GET'])
+@app.route('/api/realtime/token', methods=['GET', 'POST'])
 def create_realtime_token():
     """Mint an ephemeral API key for direct browser→OpenAI WebRTC connection.
     The session config (instructions, voice, VAD) is baked into the token.
-    Browser then connects directly to OpenAI — no proxy needed for audio."""
-    mode = request.args.get('mode', 'interview')
-    language = request.args.get('language', 'en')
+    Browser then connects directly to OpenAI — no proxy needed for audio.
+    Accepts POST with JSON body containing cv_text and job_profile_text for context."""
+    # Support both GET (legacy) and POST (with CV/Job context)
+    if request.method == 'POST' and request.is_json:
+        body = request.get_json()
+        mode = body.get('mode', 'interview')
+        language = body.get('language', 'en')
+        cv_text = body.get('cv_text', '')
+        job_profile_text = body.get('job_profile_text', '')
+    else:
+        mode = request.args.get('mode', 'interview')
+        language = request.args.get('language', 'en')
+        cv_text = ''
+        job_profile_text = ''
 
     # Select system prompt and voice based on mode
     if mode == 'interview':
         instructions = REALTIME_INTERVIEW_PROMPT
         voice = TTS_VOICES.get('interview', 'marin')
+
+        # Inject CV and Job Profile context if provided
+        context_parts = []
+        if cv_text and cv_text.strip():
+            context_parts.append(f"\n\n# Candidate's CV/Resume\nThe candidate has shared their CV. Use this to tailor your questions to their experience and background:\n---\n{cv_text.strip()[:3000]}\n---")
+        if job_profile_text and job_profile_text.strip():
+            context_parts.append(f"\n\n# Job Profile\nThe candidate is preparing for this specific role. Tailor your questions to assess fit for this position:\n---\n{job_profile_text.strip()[:3000]}\n---")
+        if context_parts:
+            instructions = instructions + ''.join(context_parts)
+            logger.info(f"Interview context injected: CV={bool(cv_text)}, Job={bool(job_profile_text)}")
+
     elif mode == 'helpdesk':
         instructions = REALTIME_HELPDESK_PROMPT
         voice = TTS_VOICES.get('helpdesk', 'cedar')
@@ -1614,11 +1727,22 @@ def handle_disconnect():
 
 
 @socketio.on('start_interview')
-def handle_start_interview():
+def handle_start_interview(data=None):
     sid = get_session_id()
     conv = get_conversation(sid)
     conv['mode'] = 'interview'
-    conv['messages'] = [{"role": "system", "content": INTERVIEW_SYSTEM_PROMPT}]
+
+    # Build system prompt with optional CV/Job context
+    system_prompt = INTERVIEW_SYSTEM_PROMPT
+    if data:
+        cv_text = data.get('cv_text', '')
+        job_profile_text = data.get('job_profile_text', '')
+        if cv_text and cv_text.strip():
+            system_prompt += f"\n\n# Candidate's CV/Resume\nUse this to tailor your questions:\n---\n{cv_text.strip()[:3000]}\n---"
+        if job_profile_text and job_profile_text.strip():
+            system_prompt += f"\n\n# Job Profile\nTailor questions to assess fit for this role:\n---\n{job_profile_text.strip()[:3000]}\n---"
+
+    conv['messages'] = [{"role": "system", "content": system_prompt}]
 
     # Log conversation start to database
     conv['conversation_id'] = db_module.log_conversation_start(sid, 'interview', user_id=conv.get('user_id'))

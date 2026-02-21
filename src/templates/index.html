@@ -346,6 +346,159 @@
         }
         .cost-badge.saving { background: #d4edda; color: #155724; }
         .cost-badge.active { background: #fff3cd; color: #856404; }
+
+        /* Interview Setup Panel */
+        .interview-setup {
+            display: none;
+            padding: 12px 15px;
+            background: #f0f4ff;
+            border-bottom: 1px solid #dde;
+            flex-shrink: 0;
+        }
+        .interview-setup h3 {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .upload-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        .upload-row label {
+            font-size: 12px;
+            color: #555;
+            min-width: 90px;
+            font-weight: 600;
+        }
+        .upload-row .file-input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+        .upload-row input[type="file"] {
+            font-size: 12px;
+            width: 100%;
+        }
+        .upload-row .file-status {
+            font-size: 11px;
+            color: #28a745;
+            margin-left: 5px;
+        }
+        .upload-row .file-remove {
+            font-size: 11px;
+            color: #dc3545;
+            cursor: pointer;
+            margin-left: 5px;
+            text-decoration: underline;
+        }
+        .setup-start-btn {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 10px;
+            background: #007bff;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .setup-start-btn:hover { background: #0056b3; }
+        .setup-start-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .optional-tag {
+            font-size: 10px;
+            color: #999;
+            font-weight: normal;
+        }
+
+        /* Video Avatar */
+        .video-avatar-container {
+            display: none;
+            text-align: center;
+            padding: 8px 15px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            flex-shrink: 0;
+            position: relative;
+        }
+        .avatar-visual {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            margin: 0 auto;
+            position: relative;
+            overflow: hidden;
+            border: 3px solid #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .avatar-visual video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .avatar-visual .avatar-fallback {
+            font-size: 42px;
+            color: white;
+        }
+        .video-avatar-container .avatar-name {
+            color: #ccc;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        .video-avatar-container .speaking-ring {
+            position: absolute;
+            top: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            transition: border-color 0.3s;
+            pointer-events: none;
+        }
+        .video-avatar-container .speaking-ring.active {
+            border-color: #28a745;
+            animation: avatar-pulse 1.5s infinite;
+        }
+        @keyframes avatar-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(40,167,69,0.4); }
+            70% { box-shadow: 0 0 0 12px rgba(40,167,69,0); }
+            100% { box-shadow: 0 0 0 0 rgba(40,167,69,0); }
+        }
+
+        /* Transcript Panel */
+        .transcript-panel {
+            display: none;
+            max-height: 60px;
+            overflow-y: auto;
+            padding: 6px 15px;
+            background: rgba(0,0,0,0.03);
+            border-top: 1px solid #eee;
+            flex-shrink: 0;
+            font-size: 12px;
+            color: #555;
+        }
+        .transcript-panel .transcript-line {
+            margin-bottom: 3px;
+            line-height: 1.4;
+        }
+        .transcript-panel .transcript-line.user-line {
+            color: #007bff;
+        }
+        .transcript-panel .transcript-line.bot-line {
+            color: #333;
+        }
+        .transcript-panel .transcript-label {
+            font-weight: 600;
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
@@ -389,9 +542,48 @@
             <button onclick="startLanguageTest()">Start</button>
         </div>
 
+        <!-- Interview Setup Panel (CV + Job Profile upload) -->
+        <div class="interview-setup" id="interview-setup">
+            <h3><i class="fas fa-file-upload"></i> Prepare for Interview</h3>
+            <div class="upload-row">
+                <label>CV / Resume <span class="optional-tag">(optional)</span></label>
+                <div class="file-input-wrapper">
+                    <input type="file" id="cv-upload" accept=".pdf,.doc,.docx,.txt" onchange="handleFileUpload('cv')">
+                    <span class="file-status" id="cv-status"></span>
+                </div>
+            </div>
+            <div class="upload-row">
+                <label>Job Profile <span class="optional-tag">(optional)</span></label>
+                <div class="file-input-wrapper">
+                    <input type="file" id="job-upload" accept=".pdf,.doc,.docx,.txt" onchange="handleFileUpload('job')">
+                    <span class="file-status" id="job-status"></span>
+                </div>
+            </div>
+            <button class="setup-start-btn" id="setup-start-btn" onclick="startInterviewWithContext()">
+                <i class="fas fa-play"></i> Start Interview
+            </button>
+        </div>
+
+        <!-- Video Avatar for Interviewer -->
+        <div class="video-avatar-container" id="video-avatar">
+            <div class="speaking-ring" id="speaking-ring"></div>
+            <div class="avatar-visual" id="avatar-visual">
+                <video id="avatar-video" loop muted playsinline style="display:none;">
+                    <source src="/static/interviewer.mp4" type="video/mp4">
+                </video>
+                <i class="fas fa-user-tie avatar-fallback" id="avatar-fallback"></i>
+            </div>
+            <div class="avatar-name" id="avatar-name">Charlotte — Interviewer</div>
+        </div>
+
         <div class="chat-area" id="chat-area"></div>
+        <!-- Live Transcript Panel -->
+        <div class="transcript-panel" id="transcript-panel">
+            <div id="transcript-content"></div>
+        </div>
+
         <div class="typing-indicator" id="typing">
-            <i class="fas fa-circle-notch fa-spin"></i> Bot is thinking...
+            <i class="fas fa-circle-notch fa-spin"></i> <span id="thinking-label">Interviewer is thinking...</span>
         </div>
         <div class="status-bar" id="status">Choose a mode to start</div>
 
@@ -565,6 +757,17 @@
         let currentLanguage = 'en';   // Track selected language for language mode
         let waitingForBotAudio = false; // True between text_chunk and audio_chunk (pre-warm phase)
 
+        // CV & Job Profile context (uploaded text)
+        let uploadedCV = '';
+        let uploadedJobProfile = '';
+
+        // Role-specific labels
+        const ROLE_LABELS = {
+            interview: { thinking: 'Interviewer is thinking...', name: 'Charlotte — Interviewer', icon: 'fa-user-tie' },
+            helpdesk: { thinking: 'IT Helpdesk is thinking...', name: 'Sam — IT Support', icon: 'fa-headset' },
+            language: { thinking: 'Language Coach is thinking...', name: 'Language Coach', icon: 'fa-language' },
+        };
+
         // SECURITY: Escape HTML to prevent XSS
         function escapeHTML(str) {
             const div = document.createElement('div');
@@ -598,7 +801,7 @@
                 badge.className = 'cost-badge active';
                 // If a mode is active, connect Realtime API
                 if (currentMode) {
-                    connectRealtime(currentMode, currentLanguage);
+                    connectRealtime(currentMode, currentLanguage, uploadedCV, uploadedJobProfile);
                 }
             } else {
                 label.textContent = 'Text mode';
@@ -625,7 +828,7 @@
         let realtimeMuted = false;      // Mic mute state (user-initiated)
         let realtimeModelSpeaking = false; // True while model is outputting audio
 
-        async function connectRealtime(mode, language) {
+        async function connectRealtime(mode, language, cvText, jobText) {
             // Disconnect any existing session
             disconnectRealtime();
 
@@ -646,9 +849,19 @@
 
                 // 1. Get ephemeral token from our server
                 // All config (instructions, voice, VAD) is baked into the token
-                const tokenRes = await fetch(
-                    `/api/realtime/token?mode=${encodeURIComponent(mode)}&language=${encodeURIComponent(language || 'en')}`
-                );
+                // POST with CV/Job context if available
+                const tokenBody = {
+                    mode: mode,
+                    language: language || 'en',
+                };
+                if (cvText) tokenBody.cv_text = cvText;
+                if (jobText) tokenBody.job_profile_text = jobText;
+
+                const tokenRes = await fetch('/api/realtime/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(tokenBody),
+                });
                 if (!tokenRes.ok) {
                     const errText = await tokenRes.text();
                     throw new Error(`Token failed: ${tokenRes.status} ${errText}`);
@@ -723,7 +936,7 @@
                         statusEl.textContent = 'Voice connection lost — reconnecting...';
                         setTimeout(() => {
                             if (!realtimeConnected && currentMode) {
-                                connectRealtime(currentMode, currentLanguage);
+                                connectRealtime(currentMode, currentLanguage, uploadedCV, uploadedJobProfile);
                             }
                         }, 2000);
                     }
@@ -885,6 +1098,7 @@
                     console.log('[Realtime] >>> Speech STARTED — mic audio IS flowing to OpenAI');
                     statusEl.textContent = '🎤 Listening...';
                     typingEl.style.display = 'none';
+                    setAvatarSpeaking(false);
                     // With interrupt_response: true, the server automatically
                     // cancels any in-progress model response. We just update UI.
                     if (realtimeModelSpeaking) {
@@ -911,6 +1125,7 @@
                     console.log('[Realtime] >>> User transcript:', event.transcript);
                     if (event.transcript && event.transcript.trim()) {
                         addUserMessage(event.transcript.trim());
+                        addTranscriptLine('user', event.transcript.trim());
                         // Log to backend for conversation history
                         socket.emit('realtime_log', {
                             role: 'user',
@@ -930,13 +1145,15 @@
                     if (!realtimeModelSpeaking) {
                         realtimeModelSpeaking = true;
                         statusEl.textContent = '🔊 Speaking... (just speak to interrupt)';
+                        setAvatarSpeaking(true);
                     }
 
                     if (!realtimeBubbleEl) {
                         const div = document.createElement('div');
                         div.className = 'message bot';
+                        const icon = getBotIcon();
                         div.innerHTML = `
-                            <div class="avatar"><i class="fas fa-robot"></i></div>
+                            <div class="avatar"><i class="fas ${icon}"></i></div>
                             <div>
                                 <div class="bubble streaming-bubble">${escapeHTML(realtimeTextBuffer)}</div>
                             </div>`;
@@ -953,6 +1170,10 @@
                     if (realtimeBubbleEl) {
                         realtimeBubbleEl.classList.remove('streaming-bubble');
                     }
+                    // Add to transcript panel
+                    if (realtimeTextBuffer.trim()) {
+                        addTranscriptLine('bot', realtimeTextBuffer.trim());
+                    }
                     // Log to backend
                     if (realtimeTextBuffer.trim()) {
                         socket.emit('realtime_log', {
@@ -968,6 +1189,7 @@
                 case 'response.done':
                     typingEl.style.display = 'none';
                     realtimeModelSpeaking = false;
+                    setAvatarSpeaking(false);
                     statusEl.textContent = '🎤 Ready — speak anytime';
                     break;
 
@@ -1351,8 +1573,9 @@
                 div.className = 'message bot';
                 div.id = 'streaming-msg';
                 const safeText = escapeHTML(streamingTextBuffer);
+                const icon = getBotIcon();
                 div.innerHTML = `
-                    <div class="avatar"><i class="fas fa-robot"></i></div>
+                    <div class="avatar"><i class="fas ${icon}"></i></div>
                     <div>
                         <div class="bubble streaming-bubble">${safeText}</div>
                     </div>`;
@@ -1511,19 +1734,25 @@
         });
 
         // --- UI functions ---
+        function getBotIcon() {
+            return (ROLE_LABELS[currentMode] || ROLE_LABELS.interview).icon;
+        }
+
         function addBotMessage(text, audioUrl) {
             const div = document.createElement('div');
             div.className = 'message bot';
             // SECURITY: Escape text to prevent XSS
             const safeText = escapeHTML(text);
+            const icon = getBotIcon();
             div.innerHTML = `
-                <div class="avatar"><i class="fas fa-robot"></i></div>
+                <div class="avatar"><i class="fas ${icon}"></i></div>
                 <div>
                     <div class="bubble">${safeText}</div>
                     ${audioUrl ? `<div class="audio-player"><audio controls src="${audioUrl}"></audio></div>` : ''}
                 </div>`;
             chatArea.appendChild(div);
             chatArea.scrollTop = chatArea.scrollHeight;
+            addTranscriptLine('bot', text);
         }
 
         function addUserMessage(text) {
@@ -1536,6 +1765,7 @@
                 <div class="avatar"><i class="fas fa-user"></i></div>`;
             chatArea.appendChild(div);
             chatArea.scrollTop = chatArea.scrollHeight;
+            addTranscriptLine('user', text);
         }
 
         // COST OPTIMIZATION: Bot message with on-demand play button (no auto TTS)
@@ -1544,8 +1774,9 @@
             div.className = 'message bot';
             const safeText = escapeHTML(text);
             const encodedText = btoa(encodeURIComponent(text));
+            const icon = getBotIcon();
             div.innerHTML = `
-                <div class="avatar"><i class="fas fa-robot"></i></div>
+                <div class="avatar"><i class="fas ${icon}"></i></div>
                 <div>
                     <div class="bubble">${safeText}</div>
                     <div class="tts-play-area">
@@ -1574,9 +1805,157 @@
         }
 
         function showThinking() {
+            // Set role-specific thinking label
+            const label = document.getElementById('thinking-label');
+            const role = ROLE_LABELS[currentMode] || ROLE_LABELS.interview;
+            label.textContent = role.thinking;
             typingEl.style.display = 'block';
             chatArea.scrollTop = chatArea.scrollHeight;
             isProcessing = true;
+        }
+
+        // ============================================================
+        // FILE UPLOAD: CV & Job Profile for interview context
+        // ============================================================
+        async function handleFileUpload(type) {
+            const fileInput = document.getElementById(type === 'cv' ? 'cv-upload' : 'job-upload');
+            const statusEl = document.getElementById(type === 'cv' ? 'cv-status' : 'job-status');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Validate file size (max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                statusEl.textContent = '❌ File too large (max 5MB)';
+                statusEl.style.color = '#dc3545';
+                fileInput.value = '';
+                return;
+            }
+
+            statusEl.textContent = '⏳ Uploading...';
+            statusEl.style.color = '#856404';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('type', type);
+
+            try {
+                const res = await fetch('/api/upload-document', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+                if (res.ok && data.text) {
+                    if (type === 'cv') uploadedCV = data.text;
+                    else uploadedJobProfile = data.text;
+                    statusEl.innerHTML = '✅ ' + file.name + ' <span class="file-remove" onclick="removeUpload(\'' + type + '\')">✕ remove</span>';
+                    statusEl.style.color = '#28a745';
+                } else {
+                    statusEl.textContent = '❌ ' + (data.error || 'Upload failed');
+                    statusEl.style.color = '#dc3545';
+                    fileInput.value = '';
+                }
+            } catch(e) {
+                statusEl.textContent = '❌ Upload error';
+                statusEl.style.color = '#dc3545';
+                fileInput.value = '';
+            }
+        }
+
+        function removeUpload(type) {
+            if (type === 'cv') {
+                uploadedCV = '';
+                document.getElementById('cv-upload').value = '';
+                document.getElementById('cv-status').textContent = '';
+            } else {
+                uploadedJobProfile = '';
+                document.getElementById('job-upload').value = '';
+                document.getElementById('job-status').textContent = '';
+            }
+        }
+
+        // ============================================================
+        // VIDEO AVATAR: Show animated interviewer/agent
+        // ============================================================
+        function showVideoAvatar(mode) {
+            const container = document.getElementById('video-avatar');
+            const video = document.getElementById('avatar-video');
+            const fallback = document.getElementById('avatar-fallback');
+            const nameEl = document.getElementById('avatar-name');
+            const role = ROLE_LABELS[mode] || ROLE_LABELS.interview;
+            nameEl.textContent = role.name;
+            fallback.className = 'fas ' + role.icon + ' avatar-fallback';
+
+            container.style.display = 'block';
+
+            // Try to load video for interview mode
+            if (mode === 'interview') {
+                video.play().then(() => {
+                    video.style.display = 'block';
+                    fallback.style.display = 'none';
+                }).catch(() => {
+                    // Video not available — show icon fallback
+                    video.style.display = 'none';
+                    fallback.style.display = 'block';
+                });
+            } else {
+                video.style.display = 'none';
+                fallback.style.display = 'block';
+            }
+        }
+
+        function hideVideoAvatar() {
+            document.getElementById('video-avatar').style.display = 'none';
+            const video = document.getElementById('avatar-video');
+            video.pause();
+            video.style.display = 'none';
+            document.getElementById('avatar-fallback').style.display = 'block';
+            setAvatarSpeaking(false);
+        }
+
+        function setAvatarSpeaking(isSpeaking) {
+            const ring = document.getElementById('speaking-ring');
+            if (isSpeaking) ring.classList.add('active');
+            else ring.classList.remove('active');
+        }
+
+        // ============================================================
+        // LIVE TRANSCRIPT: Show text for both candidate and bot
+        // ============================================================
+        function showTranscriptPanel() {
+            document.getElementById('transcript-panel').style.display = 'block';
+        }
+
+        function hideTranscriptPanel() {
+            document.getElementById('transcript-panel').style.display = 'none';
+            document.getElementById('transcript-content').innerHTML = '';
+        }
+
+        function addTranscriptLine(role, text) {
+            const panel = document.getElementById('transcript-panel');
+            const content = document.getElementById('transcript-content');
+            panel.style.display = 'block';
+
+            const roleName = role === 'user' ? 'You' : (ROLE_LABELS[currentMode] || ROLE_LABELS.interview).name.split(' — ')[0];
+            const cssClass = role === 'user' ? 'user-line' : 'bot-line';
+            const line = document.createElement('div');
+            line.className = 'transcript-line ' + cssClass;
+            line.innerHTML = '<span class=\"transcript-label\">' + escapeHTML(roleName) + ':</span> ' + escapeHTML(text);
+            content.appendChild(line);
+
+            // Keep only last 20 lines
+            while (content.children.length > 20) content.removeChild(content.firstChild);
+            panel.scrollTop = panel.scrollHeight;
+        }
+
+        function updateTranscriptLast(text) {
+            const content = document.getElementById('transcript-content');
+            if (content.lastChild) {
+                const label = content.lastChild.querySelector('.transcript-label');
+                const labelText = label ? label.outerHTML : '';
+                content.lastChild.innerHTML = labelText + ' ' + escapeHTML(text);
+            }
+            const panel = document.getElementById('transcript-panel');
+            panel.scrollTop = panel.scrollHeight;
         }
 
         // --- Active mode highlight ---
@@ -1614,31 +1993,47 @@
         }
 
         function startInterview() {
+            // Show the interview setup panel (CV/Job upload)
+            currentMode = 'interview';
+            setActiveMode('btn-interview');
+            document.getElementById('interview-setup').style.display = 'block';
+            document.getElementById('language-picker').style.display = 'none';
+            statusEl.textContent = 'Upload your CV/Job Profile (optional) or start directly';
+        }
+
+        function startInterviewWithContext() {
+            document.getElementById('interview-setup').style.display = 'none';
             cleanupBeforeModeSwitch();
             chatArea.innerHTML = '';
             statusEl.textContent = 'Interview Assistant';
             currentMode = 'interview';
             setActiveMode('btn-interview');
             startSessionTimer();
+            showVideoAvatar('interview');
+            showTranscriptPanel();
 
             if (voiceModeOn) {
                 // REALTIME API: Direct browser ↔ OpenAI WebRTC
-                connectRealtime('interview');
+                // Pass CV/Job context via query params so backend can inject into prompt
+                connectRealtime('interview', 'en', uploadedCV, uploadedJobProfile);
             } else {
                 // Text mode: Socket.IO
                 socket.emit('toggle_voice_mode', { voice_mode: false });
                 showThinking();
-                socket.emit('start_interview');
+                socket.emit('start_interview', { cv_text: uploadedCV, job_profile_text: uploadedJobProfile });
             }
         }
 
         function startHelpdesk() {
             cleanupBeforeModeSwitch();
+            document.getElementById('interview-setup').style.display = 'none';
             chatArea.innerHTML = '';
             statusEl.textContent = 'IT Helpdesk';
             currentMode = 'helpdesk';
             setActiveMode('btn-helpdesk');
             startSessionTimer();
+            showVideoAvatar('helpdesk');
+            showTranscriptPanel();
 
             if (voiceModeOn) {
                 connectRealtime('helpdesk');
@@ -1653,6 +2048,7 @@
             currentMode = 'language';
             setActiveMode('btn-language');
             document.getElementById('language-picker').style.display = 'block';
+            document.getElementById('interview-setup').style.display = 'none';
         }
 
         function startLanguageTest() {
@@ -1663,6 +2059,8 @@
             chatArea.innerHTML = '';
             statusEl.textContent = 'Language Practice Companion';
             startSessionTimer();
+            showVideoAvatar('language');
+            showTranscriptPanel();
 
             if (voiceModeOn) {
                 connectRealtime('language', lang);
@@ -1705,6 +2103,9 @@
             pendingTtsMessages = {};
             chatArea.innerHTML = '';
             document.getElementById('language-picker').style.display = 'none';
+            document.getElementById('interview-setup').style.display = 'none';
+            hideVideoAvatar();
+            hideTranscriptPanel();
             // Send reset with current mode so backend re-initializes correctly
             socket.emit('reset', { mode: currentMode, language: currentLanguage });
 

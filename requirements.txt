@@ -10,6 +10,10 @@ openpyxl==3.1.5
 requests==2.32.5
 requests-toolbelt>=1.0.0
 
+# ── Document parsing (CV/Job uploads) ────────────────
+PyPDF2>=3.0.0
+python-docx>=1.1.0
+
 # ── Enterprise (optional – app works without these) ───
 redis>=5.0.0
 flask-sqlalchemy>=3.1.0
