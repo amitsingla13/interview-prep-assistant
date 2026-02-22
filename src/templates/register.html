@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#667eea">
+    <title>Sign Up — Interview Preparation Assistant</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .card { background: #fff; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.2); width: 100%; max-width: 420px; padding: 40px 36px; }
+        .card h1 { text-align: center; color: #333; margin-bottom: 6px; font-size: 1.8rem; }
+        .card .subtitle { text-align: center; color: #888; margin-bottom: 28px; font-size: .95rem; }
+        .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: .9rem; }
+        .flash.error { background: #fdecea; color: #b71c1c; }
+        .flash.success { background: #e8f5e9; color: #2e7d32; }
+        .flash.warning { background: #fff3e0; color: #e65100; }
+        .flash.info { background: #e3f2fd; color: #1565c0; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; color: #444; font-size: .9rem; }
+        input[type="text"], input[type="email"], input[type="password"] { width: 100%; padding: 12px 14px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 1rem; margin-bottom: 18px; transition: border-color .2s; }
+        input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,.15); }
+        button { width: 100%; padding: 13px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: opacity .2s; }
+        button:hover { opacity: .9; }
+        .footer { text-align: center; margin-top: 20px; font-size: .9rem; color: #666; }
+        .footer a { color: #667eea; text-decoration: none; font-weight: 600; }
+        .footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1><i class="fas fa-user-plus"></i> Create Account</h1>
+        <p class="subtitle">Join the Interview Preparation Assistant</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="/register">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" placeholder="Your name" required value="{{ request.form.get('username', '') }}">
+
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="you@example.com" required value="{{ request.form.get('email', '') }}">
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="Min 6 characters" required>
+
+            <label for="confirm_password">Confirm Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" placeholder="Re-enter password" required>
+
+            <button type="submit"><i class="fas fa-user-plus"></i> Sign Up</button>
+        </form>
+
+        <p class="footer">Already have an account? <a href="/login">Log in</a></p>
+    </div>
+</body>
+</html>

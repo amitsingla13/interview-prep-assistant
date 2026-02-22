@@ -510,6 +510,15 @@
     </style>
 </head>
 <body>
+    <!-- ===== Persistent Top Navbar ===== -->
+    <nav style="background:linear-gradient(135deg,#667eea,#764ba2);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(0,0,0,.15);position:sticky;top:0;z-index:9999;flex-shrink:0;">
+        <a href="/dashboard" style="color:#fff;text-decoration:none;font-weight:700;font-size:1rem;font-family:'Segoe UI',Tahoma,sans-serif;"><i class="fas fa-arrow-left"></i> &nbsp;Dashboard</a>
+        <div style="display:flex;align-items:center;gap:14px;">
+            <span style="color:rgba(255,255,255,.9);font-size:.88rem;font-family:'Segoe UI',Tahoma,sans-serif;">{{ username }}</span>
+            <a href="/logout" style="padding:6px 16px;background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.35);border-radius:8px;text-decoration:none;font-weight:600;font-size:.84rem;font-family:'Segoe UI',Tahoma,sans-serif;transition:background .2s;"><i class="fas fa-sign-out-alt"></i> Log Out</a>
+        </div>
+    </nav>
+
     <div class="container">
         <div class="header">
             <h1><i class="fas fa-headset"></i> Interview Prep Assistant</h1>
@@ -2502,6 +2511,18 @@
                     .catch((err) => console.log('[PWA] SW registration failed:', err));
             });
         }
+
+        // --- Auto-start mode from dashboard selection ---
+        (function autoStartMode() {
+            const urlMode = '{{ mode }}';
+            if (urlMode === 'interview') {
+                setTimeout(() => startInterview(), 300);
+            } else if (urlMode === 'language') {
+                setTimeout(() => showLanguagePicker(), 300);
+            } else if (urlMode === 'helpdesk') {
+                setTimeout(() => startHelpdesk(), 300);
+            }
+        })();
     </script>
     <script src="/static/voice.js"></script>
 </body>

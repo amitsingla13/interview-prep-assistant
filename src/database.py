@@ -26,6 +26,10 @@ def init_database(app, config):
     global db, _db_available, _config
     _config = config
 
+    logger.info("[Database] Initializing database...")
+    logger.info(f"[Database] DATABASE_ENABLED: {config.DATABASE_ENABLED}")
+    logger.info(f"[Database] SQLALCHEMY_DATABASE_URI: {config.DATABASE_URL}")
+
     if not config.DATABASE_ENABLED:
         logger.info("[Database] DATABASE_URL not configured — persistence disabled")
         return False
@@ -428,3 +432,10 @@ def get_database_health() -> Dict:
         }
     except Exception as e:
         return {'status': 'unhealthy', 'message': str(e)}
+
+
+def get_db_session():
+    if db is None:
+        logger.error("[Database] The database session is not initialized. Ensure init_database is called successfully.")
+        raise RuntimeError("Database session is not initialized.")
+    return db.session

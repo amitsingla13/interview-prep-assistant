@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Interview Prep">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <title>Dashboard — Interview Preparation Assistant</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" sizes="192x192" href="/static/icons/icon-192x192.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* ===== Phone-frame container (matches index.html) ===== */
+        .container {
+            width: 100%; max-width: 600px;
+            height: 100vh; max-height: 100vh;
+            background: #fff; overflow-y: auto; overflow-x: hidden;
+            display: flex; flex-direction: column;
+        }
+        @media (min-height: 700px) and (min-width: 640px) {
+            .container { height: 95vh; max-height: 95vh; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+        }
+        @media (max-width: 639px) {
+            .container { max-width: 100%; border-radius: 0; }
+        }
+
+        /* ===== Header (matches app header) ===== */
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff; padding: 14px 18px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .header .brand { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .header .brand i { font-size: 18px; }
+        .header .user-area { display: flex; align-items: center; gap: 12px; }
+        .header .user-area span { font-size: 12px; opacity: .85; }
+        .header .logout-btn {
+            padding: 5px 14px; background: rgba(255,255,255,.18); color: #fff;
+            border: 1.5px solid rgba(255,255,255,.35); border-radius: 20px;
+            text-decoration: none; font-weight: 600; font-size: 12px; transition: background .2s;
+        }
+        .header .logout-btn:hover { background: rgba(255,255,255,.32); }
+
+        /* ===== Content area ===== */
+        .content { flex: 1; padding: 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+
+        /* Flash messages */
+        .flash { padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+        .flash.success { background: #e8f5e9; color: #2e7d32; }
+        .flash.info { background: #e3f2fd; color: #1565c0; }
+        .flash.error { background: #fdecea; color: #b71c1c; }
+        .flash.warning { background: #fff3e0; color: #e65100; }
+
+        /* Welcome */
+        .welcome { text-align: center; padding: 8px 0 4px; }
+        .welcome h2 { font-size: 18px; color: #333; margin-bottom: 3px; }
+        .welcome p { font-size: 13px; color: #888; }
+
+        /* ===== Feature cards — compact ===== */
+        .features { display: flex; flex-direction: column; gap: 12px; }
+        .feature-card {
+            display: flex; align-items: center; gap: 16px;
+            background: #fff; border-radius: 14px;
+            box-shadow: 0 2px 12px rgba(0,0,0,.06);
+            padding: 16px 18px; text-decoration: none; color: inherit;
+            border: 1.5px solid #f0f0f0;
+            transition: transform .15s, box-shadow .15s, border-color .15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .feature-card:hover, .feature-card:active {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,.1);
+            border-color: #ddd;
+        }
+        .feature-card .icon-circle {
+            width: 48px; height: 48px; border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; font-size: 20px; color: #fff;
+        }
+        .icon-circle.interview { background: linear-gradient(135deg, #007bff, #0056d2); }
+        .icon-circle.language  { background: linear-gradient(135deg, #28a745, #1e8449); }
+        .icon-circle.helpdesk  { background: linear-gradient(135deg, #17a2b8, #117a8b); }
+
+        .feature-card .text h3 { font-size: 15px; color: #333; margin-bottom: 2px; }
+        .feature-card .text p  { font-size: 12px; color: #888; line-height: 1.45; }
+        .feature-card .arrow { margin-left: auto; color: #ccc; font-size: 14px; flex-shrink: 0; }
+
+        /* ===== Footer ===== */
+        .footer {
+            text-align: center; padding: 14px 18px; flex-shrink: 0;
+            border-top: 1px solid #f0f0f0;
+        }
+        .footer p { font-size: 11px; color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="brand"><i class="fas fa-headset"></i> Interview Prep</div>
+            <div class="user-area">
+                <span><i class="fas fa-user-circle"></i> {{ username }}</span>
+                <a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i> Log Out</a>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <div class="welcome">
+                <h2>Hi, {{ username }} 👋</h2>
+                <p>Choose a practice mode to begin</p>
+            </div>
+
+            <div class="features">
+                <a class="feature-card" href="/app?mode=interview">
+                    <div class="icon-circle interview"><i class="fas fa-briefcase"></i></div>
+                    <div class="text">
+                        <h3>Mock Interview</h3>
+                        <p>AI-powered interviews tailored to your role &amp; experience.</p>
+                    </div>
+                    <i class="fas fa-chevron-right arrow"></i>
+                </a>
+
+                <a class="feature-card" href="/app?mode=language">
+                    <div class="icon-circle language"><i class="fas fa-language"></i></div>
+                    <div class="text">
+                        <h3>Language Practice</h3>
+                        <p>Conversational practice in multiple languages with real-time feedback.</p>
+                    </div>
+                    <i class="fas fa-chevron-right arrow"></i>
+                </a>
+
+                <a class="feature-card" href="/app?mode=helpdesk">
+                    <div class="icon-circle helpdesk"><i class="fas fa-headset"></i></div>
+                    <div class="text">
+                        <h3>IT Helpdesk</h3>
+                        <p>Handle support scenarios &amp; troubleshoot with an AI caller.</p>
+                    </div>
+                    <i class="fas fa-chevron-right arrow"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>&copy; 2026 Interview Preparation Assistant &middot; v2.0</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, jsonify, send_from_directory, send_file, Response
+from flask import Flask, render_template, request, redirect, url_for, jsonify, send_from_directory, send_file, Response, session, flash
 from flask_socketio import SocketIO, emit
 from openai import OpenAI
 import os
@@ -7,16 +7,22 @@ import json as json_module
 import tempfile
 import base64
 import time
+import uuid
 import hashlib
+import secrets
 import html as html_module
 import re
 import logging
 import eventlet
 import requests as http_requests
 from collections import defaultdict
+from functools import wraps
 import openpyxl
 from voice.openai_voice import transcribe_audio_whisper, synthesize_speech_openai
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime, timezone, timedelta
 
 # ============================================================
 # ENTERPRISE MODULES: Import enterprise infrastructure
@@ -51,8 +57,58 @@ logger = logging.getLogger(__name__)
 if not config.validate():
     logger.error("Critical configuration errors — check settings above")
 
-app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(
+    __name__,
+    static_folder=os.path.join(BASE_DIR, 'static'),
+    template_folder=os.path.join(BASE_DIR, 'templates'),
+)
 app.config['SECRET_KEY'] = config.SECRET_KEY
+
+# ============================================================
+# USER AUTH: SQLite database for user registration & login
+# ============================================================
+USER_DB_PATH = os.path.join(BASE_DIR, '..', 'data', 'users.db')
+os.makedirs(os.path.dirname(USER_DB_PATH), exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{USER_DB_PATH}'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_BINDS'] = {}  # keep enterprise DB separate if needed
+
+user_db = SQLAlchemy(app)
+
+class AppUser(user_db.Model):
+    __tablename__ = 'app_users'
+    id = user_db.Column(user_db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = user_db.Column(user_db.String(100), nullable=False)
+    email = user_db.Column(user_db.String(255), unique=True, nullable=False, index=True)
+    password_hash = user_db.Column(user_db.String(255), nullable=False)
+    created_at = user_db.Column(user_db.DateTime, default=lambda: datetime.now(timezone.utc))
+    is_active = user_db.Column(user_db.Boolean, default=True)
+    reset_token = user_db.Column(user_db.String(100), nullable=True, index=True)
+    reset_token_expiry = user_db.Column(user_db.DateTime, nullable=True)
+
+with app.app_context():
+    user_db.create_all()
+    # Migrate: add reset_token columns if they don't exist (SQLAlchemy create_all won't ALTER existing tables)
+    import sqlite3 as _sqlite3
+    _conn = _sqlite3.connect(USER_DB_PATH)
+    _cursor = _conn.execute("PRAGMA table_info(app_users)")
+    _existing_cols = {row[1] for row in _cursor.fetchall()}
+    if 'reset_token' not in _existing_cols:
+        _conn.execute("ALTER TABLE app_users ADD COLUMN reset_token VARCHAR(100)")
+    if 'reset_token_expiry' not in _existing_cols:
+        _conn.execute("ALTER TABLE app_users ADD COLUMN reset_token_expiry DATETIME")
+    _conn.commit()
+    _conn.close()
+
+def login_required(f):
+    """Decorator: redirect to login if not authenticated."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
 
 # ============================================================
 # ENTERPRISE INITIALIZATION: Redis, Postgres, Auth, Workers
@@ -532,6 +588,9 @@ def load_helpdesk_kb():
     try:
         wb = openpyxl.load_workbook(kb_path, read_only=True)
         ws = wb.active
+        if ws is None:
+            wb.close()
+            return "No active worksheet found."
         rows = list(ws.iter_rows(min_row=2, values_only=True))  # Skip header
         wb.close()
 
@@ -663,8 +722,8 @@ you get things sorted out quickly!"
 """
 
 
-def get_session_id():
-    return request.sid
+def get_session_id() -> str:
+    return getattr(request, 'sid', '') or ''  # type: ignore[attr-defined]
 
 
 def get_conversation(sid):
@@ -1097,7 +1156,7 @@ def process_and_respond(sid, user_text):
     if processing_lock.get(sid):
         cancel_generation(sid)
         # Give event loop a moment to process the cancel
-        eventlet.sleep(0.05)
+        eventlet.sleep(0)  # yield to event loop
     processing_lock[sid] = True
 
     try:
@@ -1216,9 +1275,154 @@ def _process_and_respond_inner(sid, user_text, conv):
         emit('status', {'message': 'Something went wrong. Please try again.'})
 
 
+# ============================================================
+# AUTH ROUTES: Register, Login, Logout, Dashboard
+# ============================================================
 @app.route('/')
+def home():
+    """Entry point — redirect to dashboard if logged in, else login."""
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """User registration."""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if not username or not email or not password:
+            flash('All fields are required.', 'error')
+            return render_template('register.html')
+        if len(password) < 6:
+            flash('Password must be at least 6 characters.', 'error')
+            return render_template('register.html')
+        if password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return render_template('register.html')
+
+        existing = AppUser.query.filter_by(email=email).first()
+        if existing:
+            flash('An account with this email already exists.', 'error')
+            return render_template('register.html')
+
+        new_user = AppUser()
+        new_user.username = username
+        new_user.email = email
+        new_user.password_hash = generate_password_hash(password)
+        user_db.session.add(new_user)
+        user_db.session.commit()
+        flash('Registration successful! Please log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('register.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """User login."""
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+
+        if not email or not password:
+            flash('Email and password are required.', 'error')
+            return render_template('login.html')
+
+        user = AppUser.query.filter_by(email=email).first()
+        if user and check_password_hash(user.password_hash, password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            flash(f'Welcome back, {user.username}!', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Invalid email or password.', 'error')
+            return render_template('login.html')
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """Log out and redirect to login."""
+    session.clear()
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('login'))
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Request a password reset link."""
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        if not email:
+            flash('Please enter your email address.', 'error')
+            return render_template('forgot_password.html')
+
+        user = AppUser.query.filter_by(email=email).first()
+        if user:
+            # Generate a secure token valid for 1 hour
+            token = secrets.token_urlsafe(32)
+            user.reset_token = token
+            user.reset_token_expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+            user_db.session.commit()
+            reset_url = url_for('reset_password', token=token, _external=True)
+            flash(f'Password reset link has been generated. Click the link below to reset your password.', 'success')
+            return render_template('forgot_password.html', reset_url=reset_url)
+        else:
+            # Don't reveal whether email exists — show same message
+            flash('If an account with that email exists, a reset link has been generated.', 'info')
+            return render_template('forgot_password.html')
+
+    return render_template('forgot_password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Reset password using a valid token."""
+    user = AppUser.query.filter_by(reset_token=token).first()
+    if not user or not user.reset_token_expiry or user.reset_token_expiry < datetime.now(timezone.utc):
+        flash('This reset link is invalid or has expired. Please request a new one.', 'error')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if len(password) < 6:
+            flash('Password must be at least 6 characters.', 'error')
+            return render_template('reset_password.html', token=token)
+        if password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return render_template('reset_password.html', token=token)
+
+        user.password_hash = generate_password_hash(password)
+        user.reset_token = None
+        user.reset_token_expiry = None
+        user_db.session.commit()
+        flash('Your password has been reset successfully! Please log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html', token=token)
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    """Dashboard with feature cards — gateway to the main app."""
+    return render_template('dashboard.html', username=session.get('username', 'User'))
+
+
+@app.route('/app')
+@login_required
 def index():
-    return render_template('index.html')
+    """Main interview app screen."""
+    mode = request.args.get('mode', '')
+    return render_template('index.html', username=session.get('username', 'User'), mode=mode)
 
 
 # ============================================================
@@ -1689,7 +1893,7 @@ def terms_of_service():
 @app.route('/sw.js')
 def service_worker():
     """Serve service worker from root scope for PWA."""
-    return send_from_directory(app.static_folder, 'sw.js',
+    return send_from_directory(app.static_folder or 'static', 'sw.js',
                                mimetype='application/javascript')
 
 
@@ -1748,10 +1952,11 @@ def handle_disconnect():
             try:
                 from workers import get_celery_app
                 celery = get_celery_app()
-                celery.send_task('workers.analyze_conversation_task', args=[
-                    conv['conversation_id'],
-                    [m for m in conv['messages'] if m.get('role') != 'system']
-                ])
+                if celery:
+                    celery.send_task('workers.analyze_conversation_task', args=[
+                        conv['conversation_id'],
+                        [m for m in conv['messages'] if m.get('role') != 'system']
+                    ])
             except Exception:
                 pass
 
@@ -1780,7 +1985,7 @@ def handle_start_interview(data=None):
     conv['messages'] = [{"role": "system", "content": system_prompt}]
 
     # Log conversation start to database
-    conv['conversation_id'] = db_module.log_conversation_start(sid, 'interview', user_id=conv.get('user_id'))
+    conv['conversation_id'] = db_module.log_conversation_start(sid, 'interview', user_id=conv.get('user_id') or '')
     db_module.log_analytics_event('session_start', {'mode': 'interview'}, session_id=sid)
 
     try:
@@ -1793,11 +1998,11 @@ def handle_start_interview(data=None):
                 voice=TTS_VOICES['interview'], mode='interview', emotional_tone='neutral'
             )
             if bot_text:
-                conv['messages'].append({"role": "assistant", "content": bot_text})
+                conv['messages'].append({"role": "assistant", "content": bot_text or ''})
         else:
             bot_text = chat_with_gpt(conv['messages'], model=config.OPENAI_CHAT_MODEL,
                                      max_tokens=config.LLM_MAX_TOKENS_INTERVIEW)
-            conv['messages'].append({"role": "assistant", "content": bot_text})
+            conv['messages'].append({"role": "assistant", "content": bot_text or ''})
             emit('text_response', {'text': bot_text, 'msg_id': 0})
 
         save_conversation(sid, conv)
@@ -1828,7 +2033,7 @@ def handle_start_language_test(data):
     ]
 
     # Log conversation start to database
-    conv['conversation_id'] = db_module.log_conversation_start(sid, 'language', language=language_code, user_id=conv.get('user_id'))
+    conv['conversation_id'] = db_module.log_conversation_start(sid, 'language', language=language_code, user_id=conv.get('user_id') or '')
     db_module.log_analytics_event('session_start', {'mode': 'language', 'language': language_code}, session_id=sid)
 
     try:
@@ -1841,11 +2046,11 @@ def handle_start_language_test(data):
                 voice=TTS_VOICES['language'], mode='language', emotional_tone='neutral'
             )
             if bot_text:
-                conv['messages'].append({"role": "assistant", "content": bot_text})
+                conv['messages'].append({"role": "assistant", "content": bot_text or ''})
         else:
             bot_text = chat_with_gpt(conv['messages'], model=config.OPENAI_CHAT_MODEL,
                                      max_tokens=config.LLM_MAX_TOKENS_LANGUAGE)
-            conv['messages'].append({"role": "assistant", "content": bot_text})
+            conv['messages'].append({"role": "assistant", "content": bot_text or ''})
             emit('text_response', {'text': bot_text, 'msg_id': 0})
 
         save_conversation(sid, conv)
@@ -1864,7 +2069,7 @@ def handle_start_helpdesk():
     conv['messages'] = [{"role": "system", "content": IT_HELPDESK_SYSTEM_PROMPT}]
 
     # Log conversation start to database
-    conv['conversation_id'] = db_module.log_conversation_start(sid, 'helpdesk', user_id=conv.get('user_id'))
+    conv['conversation_id'] = db_module.log_conversation_start(sid, 'helpdesk', user_id=conv.get('user_id') or '')
     db_module.log_analytics_event('session_start', {'mode': 'helpdesk'}, session_id=sid)
 
     try:
@@ -1877,11 +2082,11 @@ def handle_start_helpdesk():
                 voice=TTS_VOICES['helpdesk'], mode='helpdesk', emotional_tone='neutral'
             )
             if bot_text:
-                conv['messages'].append({"role": "assistant", "content": bot_text})
+                conv['messages'].append({"role": "assistant", "content": bot_text or ''})
         else:
             bot_text = chat_with_gpt(conv['messages'], model=config.OPENAI_CHAT_MODEL,
                                      max_tokens=config.LLM_MAX_TOKENS_HELPDESK)
-            conv['messages'].append({"role": "assistant", "content": bot_text})
+            conv['messages'].append({"role": "assistant", "content": bot_text or ''})
             emit('text_response', {'text': bot_text, 'msg_id': 0})
 
         save_conversation(sid, conv)
